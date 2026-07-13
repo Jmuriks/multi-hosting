@@ -1,9 +1,31 @@
 import json
 from pathlib import Path
 
-def save_config(config):
-    with open("config.json","w") as file:
-        json.dump(config, file, indent=4)
+
+config_template = {
+    "selected_server": None,
+    "servers": [
+    ]
+}
+
+def save_config(server_config: dict):
+    config = config_template
+    config["servers"] =  server_config
+
+    try:
+        with open("config.json","r") as file:
+            config = json.load(file)
+        
+        for server in config["servers"]:
+            for data in server_config:
+                if server == data:
+                    return
+                else:
+                    config["servers"].update(server_config)
+    except:
+
+        with open("config.json","w") as file:
+            json.dump(config, file, indent=4)
 
 def read_config():
     with open("config.json","r") as file:
@@ -11,15 +33,23 @@ def read_config():
 
 def find_server_jar(dir_path:Path) -> Path: 
     
-    for server_path in dir_path.rglob("server.jar"):
-        return server_path
+    server_path = dir_path / "server.jar"
     
+    if server_path.exists():
+        return server_path
+        
     raise Exception("Cannot find server in directory")
 
 def default_server_name(args):
     if args.name:
         return str(args.name)
     return args.path.stem
+
+def get_servers()-> dict:
+    with open("config.json") as file:
+        config = json.load(file)
+
+    return config["servers"]
 
 def init(args):
 
@@ -39,8 +69,32 @@ def init(args):
     print(f"Server \"{server_name}\" initialised")
 
 def select(args):
-    pass
-def deselect():
-    pass
-def status():
+    servers = get_servers()
+
+    for s_name in servers.keys():
+        if args.name.lower() == s_name.lower():
+            with open("config.json","r+") as file:
+                config = json.load(file)
+                config["selected_server"] = s_name
+
+                file.seek(0)
+                json.dump(config,file,indent=4)
+                file.truncate()
+
+            print(f"Selectd server \"{s_name}\"")
+        else:
+            print("Server not initialised.")
+
+
+def deselect(args):
+    with open("config.json","r+") as file:
+        config = json.load(file)
+        config["selected_server"] = None
+
+        file.seek(0)
+        json.dump(config,file,indent=4)
+        file.truncate()
+    print("Server deselected.")
+
+def status(args):
     pass

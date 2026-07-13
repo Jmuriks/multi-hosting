@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
 def real_path(value):
-    path = Path(value)
+    path = Path(value).expanduser().resolve()
 
     if not path.exists():
         raise argparse.ArgumentTypeError(f"{value} is not a real path")
