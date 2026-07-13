@@ -1,0 +1,5 @@
+*
+!.gitignore
+!config.py
+!main.py
+!server.py
