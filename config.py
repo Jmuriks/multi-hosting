@@ -82,9 +82,9 @@ def select(args):
                 file.truncate()
 
             print(f"Selectd server \"{s_name}\"")
-        else:
-            print("Server not initialised.")
-
+            return
+        
+    print("Server not initialised.")
 
 def deselect(args):
     with open("config.json","r+") as file:
