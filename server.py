@@ -1,6 +1,9 @@
 import json
 import subprocess
 import os
+import socket
+import time
+from pathlib import Path
 
 def get_selected_server()-> dict:
     try:
@@ -21,19 +24,26 @@ def save_pid(pid):
         json.dump(config,f,indent=4)
         f.truncate()
 
+def communicate(message:str)->str:
+    client = socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+    client.connect("/tmp/mine_daemon.sock")
+
+    msg = (message + "\n").encode()
+
+    client.send(msg)
+    answer = client.recv(1024).decode()
+
+    client.close()
+    return answer
     
 def start(args):
-    server = get_selected_server()
-    path = server["path"]
+    subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
+    time.sleep(2)
 
-    process = subprocess.Popen(["java",f"-Xmx{server["ram"]}G","-jar","server.jar","nogui"],
-                     stdout=subprocess.PIPE,
-                     stdin = subprocess.PIPE,
-                     text=True,
-                     cwd=path)
-
-    print(f"server process launched: {process.pid}")
-    save_pid(process.pid)
+    answer = communicate("start")
+    print(answer)
 
 def stop(args):
-    pass
+
+    answer = communicate("stop")
+    print(answer)
