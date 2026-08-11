@@ -3,7 +3,7 @@ import socket
 import json
 import os
 
-
+# Tried to fix fucking server becoming zombie process right away. fucked up.
 
 class Daemon():
     def __init__(self, server):
@@ -22,12 +22,20 @@ class Daemon():
 
 
     def start(self)->bytes:
-        if self.server.start():
-            self.update_cfg()
 
-            return "Server started!".encode() 
-        else:
-            raise Exception("Couldn't start the server!")
+        self.update_cfg()
+        return "Server started!".encode()
+
+
+        # server_dead = self.server.start()
+        # if not server_dead:
+        #     self.update_cfg()
+
+        #     return "Server started!".encode() 
+        # else:
+        #     out, error, returncode = server_dead
+        #     return f"Couldn\'t start the server! \nstdout: {out}\nstderr: {error}\nreturn code: {returncode}".encode()
+            
 
     def stop(self)->bytes:
         returncode = self.server.stop()
@@ -61,6 +69,7 @@ class Daemon():
         try:
             self.create_socket()
             self.socket.listen()
+            self.server.start()
 
             self.accepting = True
             while self.accepting:
@@ -70,7 +79,16 @@ class Daemon():
                 self.work = True
                 while self.work:
 
-                    msg = self.socket.recv(1024).decode()
+                    server_dead = self.server.check_if_alive()
+
+                    if server_dead:
+                        out, error, returncode = server_dead
+                        client.send(f"Server Died!\nstdout: {out}\nstderr: {error}\nreturn code: {returncode}".encode())
+                        self.close_communication()
+                        client.close()
+                        break
+
+                    msg = client.recv(1024).decode()
                     if not msg:
                         client.close()
                         break
@@ -87,17 +105,21 @@ class Daemon():
                     command = parts[0]
                     arguments = parts[1:]
 
+
+                    
                     if arguments:
                         client.send("WIP".encode())
                     elif command in self.commands:
                         client.send(self.commands[command]())
                     else:
                         client.send("Unknown command".encode())
+
+
         finally:
             self.socket.close()
             os.remove(self.sock_path)
             self.update_cfg() #TODO Expand update_cfg so it will say in config if server is online or offline
-            os.close()
+            
 
 class Server():
     def __init__(self):
@@ -118,22 +140,37 @@ class Server():
         except:
             raise Exception("No server is selected")
         
-    def start(self):
+    def start(self)->tuple:
 
-        self.process = subprocess.Popen(["Java",f"-Xmx{self.ram}","-jar","server.jar","nogui"],
+        self.process = subprocess.Popen(["java",f"-Xmx{self.ram}G","-jar","server.jar","nogui"],
                         stdout = subprocess.PIPE,
                         stdin = subprocess.PIPE,
                         stderr = subprocess.PIPE,
                         text = True,
                         cwd = self.path)
-
-        return True
+        
+        return self.check_if_alive()        
 
     def stop(self):
 
-        self.process.stdin.write("stop")
+        self.process.stdin.write("stop\n")
         self.process.stdin.flush()
-        return self.process.wait(10.0)
+        try:
+            returncode = self.process.wait(10.0)
+            return returncode
+        except subprocess.TimeoutExpired:
+            return returncode
+
+
+    def check_if_alive(self):
+        poll = self.process.poll()
+
+        if poll is not None:
+            error = self.process.stderr.read()
+            out = self.process.stdout.read()
+            return (out, error, poll)
+        else:
+            return None
 
 minecraft = Server()
 minecraft.get_selected_server()

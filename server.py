@@ -14,11 +14,11 @@ def get_selected_server()-> dict:
     except:
         raise Exception("No server is selected")
 
-def save_pid(pid):
+def save_daemon_pid(pid):
 
     with open("config.json","r+") as f:
         config = json.load(f)
-        config["server_pid"] = pid
+        config["daemon_pid"] = pid
 
         f.seek(0)
         json.dump(config,f,indent=4)
@@ -37,7 +37,8 @@ def communicate(message:str)->str:
     return answer
     
 def start(args):
-    subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
+    daemon = subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
+    save_daemon_pid(daemon.pid)
     time.sleep(2)
 
     answer = communicate("start")
