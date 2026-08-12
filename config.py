@@ -5,7 +5,9 @@ from pathlib import Path
 config_template = {
     "selected_server": None,
     "server_pid": None,
+    "server_alive": None,
     "daemon_pid":None,
+    "daemon_alive":None,
     "servers": [
     ]
 }

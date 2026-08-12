@@ -3,7 +3,9 @@ import socket
 import json
 import os
 
-# Tried to fix fucking server becoming zombie process right away. fucked up.
+# TODO Daemon start func: need to make sure server can start when process doesnt exist and if process is dead
+# TODO Server is_dead func: Its not intuitive and it should just return returncode or some shit but not errors or you know (requieres thinking)
+
 
 class Daemon():
     def __init__(self, server):
@@ -22,22 +24,23 @@ class Daemon():
 
 
     def start(self)->bytes:
+        # if not self.server.process:
 
-        self.update_cfg()
-        return "Server started!".encode()
+        if not self.server.process.poll():
+            return "Server already online".encode()
+
+        err = self.server.start()
+
+        if err:
+            return f"Server couldn't start!\nstdout: {err[0]}\nstderr: {err[1]}\nreturncode{err[2]}".encode()
+        return "Server started!"
+        
 
 
-        # server_dead = self.server.start()
-        # if not server_dead:
-        #     self.update_cfg()
-
-        #     return "Server started!".encode() 
-        # else:
-        #     out, error, returncode = server_dead
-        #     return f"Couldn\'t start the server! \nstdout: {out}\nstderr: {error}\nreturn code: {returncode}".encode()
-            
 
     def stop(self)->bytes:
+        if self.server.is_dead():
+            return f"Server is already dead ({self.server.process.returncode})".encode()
         returncode = self.server.stop()
         self.close_communication()
         return f"Server ended with {returncode} code".encode()
@@ -48,7 +51,16 @@ class Daemon():
 
         with open("config.json","r+") as f:
             config = json.load(f)
-            config["server_pid"] = self.server.process.pid
+
+            if self.server.process:
+                config["server_pid"] = self.server.process.pid
+                if self.server.is_dead() is None:
+                    config["server_alive"] = True
+                else:
+                    config["server_alive"] = False
+
+            config["daemon_pid"] = os.getpid()
+            config["daemon_alive"] = True
 
             f.seek(0)
             json.dump(config,f,indent=4)
@@ -65,11 +77,34 @@ class Daemon():
         self.acceptig = False
         self.work = False
 
-    def communicate(self): # Maybe divide insides of this func to other subfunctions
+    def msg_to_data(self,msg):
+        data = msg.split('\n')
+        data[0] = self.buffer + data[0]
+        self.buffer= data.pop()
+
+        return data
+
+    def split_msg(self, data):
+        parts = data[0].split()
+            
+        command = parts[0]
+        arguments = parts[1:]
+
+        return (command, arguments)
+
+    def handle_command(self,command,arguments,client):
+
+        if arguments:
+            client.send("WIP".encode())
+        elif command in self.commands:
+            client.send(self.commands[command]())
+        else:
+            client.send("Unknown command".encode())
+
+    def communicate(self):
         try:
             self.create_socket()
             self.socket.listen()
-            self.server.start()
 
             self.accepting = True
             while self.accepting:
@@ -79,15 +114,6 @@ class Daemon():
                 self.work = True
                 while self.work:
 
-                    server_dead = self.server.check_if_alive()
-
-                    if server_dead:
-                        out, error, returncode = server_dead
-                        client.send(f"Server Died!\nstdout: {out}\nstderr: {error}\nreturn code: {returncode}".encode())
-                        self.close_communication()
-                        client.close()
-                        break
-
                     msg = client.recv(1024).decode()
                     if not msg:
                         client.close()
@@ -96,23 +122,13 @@ class Daemon():
                         client.send("\\n wasnt found in the message".encode())
                         continue
                         
-                    data = msg.split('\n')
-                    data[0] = self.buffer + data[0]
-                    self.buffer= data.pop()
+                    data = self.msg_to_data(msg)
 
-                    parts = data[0].split()
-                            
-                    command = parts[0]
-                    arguments = parts[1:]
-
-
+                    command, arguments = self.split_msg(data)
                     
-                    if arguments:
-                        client.send("WIP".encode())
-                    elif command in self.commands:
-                        client.send(self.commands[command]())
-                    else:
-                        client.send("Unknown command".encode())
+                    self.handle_command(command,arguments,client)
+
+                    self.update_cfg()
 
 
         finally:
@@ -139,7 +155,15 @@ class Server():
 
         except:
             raise Exception("No server is selected")
-        
+
+    def read_std(self):
+        out = self.process.stdout.read()
+        err = self.process.stderr.read()
+        returncode = self.process.returncode
+
+        return (out,err,returncode)
+
+
     def start(self)->tuple:
 
         self.process = subprocess.Popen(["java",f"-Xmx{self.ram}G","-jar","server.jar","nogui"],
@@ -149,26 +173,24 @@ class Server():
                         text = True,
                         cwd = self.path)
         
-        return self.check_if_alive()        
+        return self.is_dead()        
 
     def stop(self):
 
         self.process.stdin.write("stop\n")
         self.process.stdin.flush()
         try:
-            returncode = self.process.wait(10.0)
-            return returncode
+            return self.process.wait(10.0)
         except subprocess.TimeoutExpired:
-            return returncode
+            return self.process.returncode
 
 
-    def check_if_alive(self):
-        poll = self.process.poll()
-
-        if poll is not None:
-            error = self.process.stderr.read()
-            out = self.process.stdout.read()
-            return (out, error, poll)
+    def is_dead(self): # Change it so it doenst return errors but simply check the status of process (Died, never started, alive) maybe retur return code
+        if not self.process: # Change this!!
+            return True
+        
+        if self.process.poll() is not None:
+            return self.read_std()
         else:
             return None
 
