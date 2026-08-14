@@ -3,8 +3,6 @@ import socket
 import json
 import os
 
-# TODO Daemon start func: need to make sure server can start when process doesnt exist and if process is dead
-# TODO Server is_dead func: Its not intuitive and it should just return returncode or some shit but not errors or you know (requieres thinking)
 
 
 class Daemon():
@@ -14,7 +12,8 @@ class Daemon():
         self.buffer = ""
         self.commands = {
             "start":self.start,
-            "stop":self.stop
+            "stop":self.stop,
+            "terminate":self.terminate
         }
         self.server = server
 
@@ -24,43 +23,45 @@ class Daemon():
 
 
     def start(self)->bytes:
-        # if not self.server.process:
+        is_alive = self.server.is_alive()
+        if is_alive:
+            return "Server already started!".encode()
+        else:
+            self.server.start()
+            return "Server started!".encode() 
 
-        if not self.server.process.poll():
-            return "Server already online".encode()
-
-        err = self.server.start()
-
-        if err:
-            return f"Server couldn't start!\nstdout: {err[0]}\nstderr: {err[1]}\nreturncode{err[2]}".encode()
-        return "Server started!"
-        
-
-
+        # return f"Server couldn't start!\nstdout: {err[0]}\nstderr: {err[1]}\nreturncode{err[2]}".encode()
 
     def stop(self)->bytes:
-        if self.server.is_dead():
+        if not self.server.is_alive():
             return f"Server is already dead ({self.server.process.returncode})".encode()
         returncode = self.server.stop()
-        self.close_communication()
+        if returncode is None:
+            return "Couldn't end the server!".encode()
+        
         return f"Server ended with {returncode} code".encode()
 
+    def terminate(self)->bytes:
+        self.server.stop()
+        self.close_communication()
+
+        return "Terminating Daemon.".encode()
 
 
-    def update_cfg(self):
+    def update_cfg(self,daemon_alive = True):
 
         with open("config.json","r+") as f:
             config = json.load(f)
 
             if self.server.process:
                 config["server_pid"] = self.server.process.pid
-                if self.server.is_dead() is None:
+                if self.server.is_alive() == 1:
                     config["server_alive"] = True
                 else:
                     config["server_alive"] = False
 
             config["daemon_pid"] = os.getpid()
-            config["daemon_alive"] = True
+            config["daemon_alive"] = daemon_alive
 
             f.seek(0)
             json.dump(config,f,indent=4)
@@ -74,7 +75,7 @@ class Daemon():
         self.socket.bind(self.sock_path)
 
     def close_communication(self):
-        self.acceptig = False
+        self.accepting = False
         self.work = False
 
     def msg_to_data(self,msg):
@@ -134,7 +135,7 @@ class Daemon():
         finally:
             self.socket.close()
             os.remove(self.sock_path)
-            self.update_cfg() #TODO Expand update_cfg so it will say in config if server is online or offline
+            self.update_cfg(False) 
             
 
 class Server():
@@ -173,30 +174,39 @@ class Server():
                         text = True,
                         cwd = self.path)
         
-        return self.is_dead()        
+        return self.is_alive()        
 
     def stop(self):
 
-        self.process.stdin.write("stop\n")
-        self.process.stdin.flush()
-        try:
-            return self.process.wait(10.0)
-        except subprocess.TimeoutExpired:
-            return self.process.returncode
+        if not self.is_alive():
+            return
 
+        for _ in range(2):
+            self.process.stdin.write("stop\n")
+            self.process.stdin.flush()
+            try:
+                return self.process.wait(10.0)
+            except subprocess.TimeoutExpired:
+                continue
 
-    def is_dead(self): # Change it so it doenst return errors but simply check the status of process (Died, never started, alive) maybe retur return code
-        if not self.process: # Change this!!
-            return True
+        print("Failed to stop the server.")
+        return None
         
-        if self.process.poll() is not None:
-            return self.read_std()
-        else:
+
+    def is_alive(self): 
+        if not self.process: # never started
             return None
+        
+        if self.process.poll() is not None: # dead
+            return 0
+        else:
+            return 1 # alive
 
 minecraft = Server()
 minecraft.get_selected_server()
 
 daemon = Daemon(minecraft)
+daemon.update_cfg()
+
 
 daemon.communicate()

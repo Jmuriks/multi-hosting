@@ -3,26 +3,8 @@ import subprocess
 import os
 import socket
 import time
+import psutil
 from pathlib import Path
-
-def get_selected_server()-> dict:
-    try:
-        with open("config.json","r") as f:
-            config = json.load(f)
-
-        return config["servers"][config["selected_server"]]
-    except:
-        raise Exception("No server is selected")
-
-# def save_daemon_pid(pid):
-
-#     with open("config.json","r+") as f:
-#         config = json.load(f)
-#         config["daemon_pid"] = pid
-
-#         f.seek(0)
-#         json.dump(config,f,indent=4)
-#         f.truncate()
 
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
@@ -43,20 +25,17 @@ def is_daemon_alive():
 
     with open("config.json",'r') as f:
         config = json.load(f)
-        return config["daemon_alive"]
+    
+    if config["daemon_pid"] is not None and psutil.pid_exists(config["daemon_pid"]):
+        return True
+    else:
+        return False
 
-def start(args):
-    if is_daemon_alive() != True:
+def send(args):
+    if not is_daemon_alive() and args.command == "start":
         daemon = subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
-    elif is_daemon_alive == None:
-        print("daemon status unknown")
-        return
-    time.sleep(2)
+        time.sleep(1)
 
-    answer = communicate("start")
+    answer = communicate(args.command)
     print(answer)
 
-def stop(args):
-
-    answer = communicate("stop")
-    print(answer)
