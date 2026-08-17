@@ -6,6 +6,14 @@ import time
 import psutil
 from pathlib import Path
 
+def server_required():
+    with open('config.json',"r") as f:
+        config = json.load(f)
+    if not config["selected_server"]:
+        print("No server selected.")
+        return True
+    return False
+
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
         return "Daemon socket doesn't exist"
@@ -32,6 +40,11 @@ def is_daemon_alive():
         return False
 
 def send(args):
+    if not os.path.exists("./config.json"):
+        print("No server initialised")
+        return
+    if server_required():
+        return
     if not is_daemon_alive() and args.command == "start":
         daemon = subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
         time.sleep(1)

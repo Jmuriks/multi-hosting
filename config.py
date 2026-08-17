@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 
@@ -73,24 +74,31 @@ def init(args):
     print(f"Server \"{server_name}\" initialised")
 
 def select(args):
+    if not os.path.exists("./config.json"):
+        print("No server initialised")
+        return
+
     servers = get_servers()
 
-    for s_name in servers.keys():
-        if args.name.lower() == s_name.lower():
-            with open("config.json","r+") as file:
+    if args.name.lower() in servers:
+        with open("config.json","r+") as file:
                 config = json.load(file)
-                config["selected_server"] = s_name
+                config["selected_server"] = args.name.lower()
 
                 file.seek(0)
                 json.dump(config,file,indent=4)
                 file.truncate()
 
-            print(f"Selectd server \"{s_name}\"")
-            return
-        
-    print("Server not initialised.")
+        print(f"Selected server \"{args.name.lower()}\"")
+        return
+    print(f"Server not found, here are initialised servers: {', '.join(get_servers().keys())}")
+    
 
 def deselect(args):
+    if not os.path.exists("./config.json"):
+        print("No server initialised")
+        return
+
     with open("config.json","r+") as file:
         config = json.load(file)
         config["selected_server"] = None

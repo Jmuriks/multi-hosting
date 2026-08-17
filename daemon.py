@@ -3,7 +3,8 @@ import socket
 import json
 import os
 
-
+# TODO server.start(): Make sure that func ends only when minecraft server is setted up and accepts stdin.
+# Check if we can start two servers, and modded server
 
 class Daemon():
     def __init__(self, server):
