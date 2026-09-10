@@ -1,5 +1,6 @@
 import json
 import os
+import cloud
 from pathlib import Path
 
 
@@ -9,8 +10,7 @@ config_template = {
     "server_alive": None,
     "daemon_pid":None,
     "daemon_alive":None,
-    "servers": [
-    ]
+    "games": {}
 }
 
 def save_config(server_config: dict):
@@ -56,15 +56,29 @@ def get_servers()-> dict:
 
     return config["servers"]
 
+def check_game_name(name:str)-> bool:
+    names = cloud.get_file_names()
+    if not names:
+        print("Cloud is empty")
+        return
+
+    prefix = name.lower()+"/"
+
+    for n in names:
+        if n.lower().startswith(prefix):
+            return True
+
+    return False
+
 def init(args):
 
-    server_jar = find_server_jar(args.path)
+    # server_jar = find_server_jar(args.path)
     server_name = default_server_name(args)
 
     config = {
         server_name : {
             "path": str(args.path),
-        "server_jar": str(server_jar),
+        # "server_jar": str(server_jar),
         "ram": args.ram
         }
     }
@@ -72,6 +86,13 @@ def init(args):
     save_config(config)
 
     print(f"Server \"{server_name}\" initialised")
+
+def game(args):
+
+    if check_game_name(args.name):
+        game_name = args.name
+
+    
 
 def select(args):
     if not os.path.exists("./config.json"):
@@ -93,7 +114,6 @@ def select(args):
         return
     print(f"Server not found, here are initialised servers: {', '.join(get_servers().keys())}")
     
-
 def deselect(args):
     if not os.path.exists("./config.json"):
         print("No server initialised")

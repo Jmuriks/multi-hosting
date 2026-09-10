@@ -15,11 +15,14 @@ def real_path(value):
     return path
 
 server_commands = ["start","stop","terminate"]
-
+game = subparsers.add_parser("game")
+game.add_argument("name",help= "name of the game")
+game.set_defaults(config.game)
 init = subparsers.add_parser("init")
 init.add_argument("path",type= real_path,help="path to directory with server")
 init.add_argument("--ram", default="4" , help="how many gb of ram allocate for server")
 init.add_argument("-n","--name", help="server name") #default in config.py
+init.add_argument("--dont-select", help="dont automatically select initialised server")
 init.set_defaults(func = config.init)
 select = subparsers.add_parser("select")
 select.add_argument("name",help="Name of the server")

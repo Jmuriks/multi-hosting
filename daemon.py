@@ -2,6 +2,7 @@ import subprocess
 import socket
 import json
 import os
+import time
 
 # TODO server.start(): Make sure that func ends only when minecraft server is setted up and accepts stdin.
 # Check if we can start two servers, and modded server
@@ -175,7 +176,7 @@ class Server():
                         text = True,
                         cwd = self.path)
         
-        return self.is_alive()        
+        return self.is_alive()
 
     def stop(self):
 
