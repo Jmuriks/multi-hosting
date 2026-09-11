@@ -3,130 +3,101 @@ import os
 import cloud
 from pathlib import Path
 
-
 config_template = {
-    "selected_server": None,
-    "server_pid": None,
-    "server_alive": None,
-    "daemon_pid":None,
-    "daemon_alive":None,
+    "directory": [],
     "games": {}
 }
+server_cfg_template = {}
 
-def save_config(server_config: dict):
+def update_cfg_field(field:str, value):
+    '''
+    Updates one field of config,
+    IF no config found, makes new one
+    '''
     config = config_template
-    config["servers"] =  server_config
+    config[field] = value
 
     try:
-        with open("config.json","r") as file:
-            config = json.load(file)
-        
-        for server in config["servers"]:
-            for data in server_config:
-                if server == data:
-                    return
-                else:
-                    config["servers"].update(server_config)
-    except:
+        with open("config.json","r+") as file:
+            cfg_file = json.load(file)
 
+        if field not in cfg_file:
+            raise Exception("Wrong field")
+
+        cfg_file.update(field=value)
         with open("config.json","w") as file:
-            json.dump(config, file, indent=4)
+            json.dump(cfg_file,file,indent=4)
+    except:
+        print("Creating new config")
+        with open("config.json","w") as file:
+            json.dump(config,file,indent=4)
 
-def read_config():
-    with open("config.json","r") as file:
-        pass
-
-def find_server_jar(dir_path:Path) -> Path: 
-    
-    server_path = dir_path / "server.jar"
-    
-    if server_path.exists():
-        return server_path
-        
-    raise Exception("Cannot find server in directory")
-
-def default_server_name(args):
-    if args.name:
-        return str(args.name)
-    return args.path.stem
-
-def get_servers()-> dict:
-    with open("config.json") as file:
-        config = json.load(file)
-
-    return config["servers"]
-
-def check_game_name(name:str)-> bool:
-    names = cloud.get_file_names()
-    if not names:
-        print("Cloud is empty")
+def get_cfg()->dict|None:
+    """
+    Returns config as dictionary
+    Returns None if config not found.    
+    """
+    try:
+        with open("config.json","r") as file:
+            cfg = json.load(file)
+        return cfg
+    except:
+        print("No config found")
         return
 
-    prefix = name.lower()+"/"
+def load_cfg(config:dict):
+    '''
+    Rewrite current Config file by given one.
+    '''
 
-    for n in names:
-        if n.lower().startswith(prefix):
-            return True
+    with open("config.json","w") as file:
+        json.dump(config,file,indent=4)
 
-    return False
+def add_games(config:dict):
+    games = cloud.get_directories()
+
+    config["games"].update({game: {} for game in games})
+
+def add_servers(config:str):
+    """
+    Add server to unfinished config, game for the server must to be present in config already
+    """
+    for g in config["games"].keys():
+        servers = cloud.get_directories(g)
+
+        print(servers)
+
+        if not servers:
+            continue
+
+        config["games"][g].update(dict.fromkeys(servers,server_cfg_template)) # TODO Add server config from the cloud for future |CHANGE THIS !!!!!!|
+
+def build_from_cloud():
+    """
+    Adds all games and servers from cloud
+    """
+    config = get_cfg()
+    if not config:
+        config = config_template
+
+    add_games(config)
+    add_servers(config)
+
+    load_cfg(config)
+
+    return config
+
+def add_cwd(config):
+    
+    cur_dir = os.getcwd()
+    if cur_dir not in config["directory"]:
+        config["directory"].append(cur_dir)
+    
 
 def init(args):
 
-    # server_jar = find_server_jar(args.path)
-    server_name = default_server_name(args)
+    config = build_from_cloud()
 
-    config = {
-        server_name : {
-            "path": str(args.path),
-        # "server_jar": str(server_jar),
-        "ram": args.ram
-        }
-    }
+    add_cwd(config)
 
-    save_config(config)
-
-    print(f"Server \"{server_name}\" initialised")
-
-def game(args):
-
-    if check_game_name(args.name):
-        game_name = args.name
-
-    
-
-def select(args):
-    if not os.path.exists("./config.json"):
-        print("No server initialised")
-        return
-
-    servers = get_servers()
-
-    if args.name.lower() in servers:
-        with open("config.json","r+") as file:
-                config = json.load(file)
-                config["selected_server"] = args.name.lower()
-
-                file.seek(0)
-                json.dump(config,file,indent=4)
-                file.truncate()
-
-        print(f"Selected server \"{args.name.lower()}\"")
-        return
-    print(f"Server not found, here are initialised servers: {', '.join(get_servers().keys())}")
-    
-def deselect(args):
-    if not os.path.exists("./config.json"):
-        print("No server initialised")
-        return
-
-    with open("config.json","r+") as file:
-        config = json.load(file)
-        config["selected_server"] = None
-
-        file.seek(0)
-        json.dump(config,file,indent=4)
-        file.truncate()
-    print("Server deselected.")
-
-def status(args):
-    pass
+    print("Done!")    

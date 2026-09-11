@@ -4,4 +4,5 @@
 !main.py
 !server.py
 !daemon.py
+!cloud.py
 !.venv

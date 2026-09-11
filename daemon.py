@@ -50,24 +50,6 @@ class Daemon():
         return "Terminating Daemon.".encode()
 
 
-    def update_cfg(self,daemon_alive = True):
-
-        with open("config.json","r+") as f:
-            config = json.load(f)
-
-            if self.server.process:
-                config["server_pid"] = self.server.process.pid
-                if self.server.is_alive() == 1:
-                    config["server_alive"] = True
-                else:
-                    config["server_alive"] = False
-
-            config["daemon_pid"] = os.getpid()
-            config["daemon_alive"] = daemon_alive
-
-            f.seek(0)
-            json.dump(config,f,indent=4)
-            f.truncate()
 
     def create_socket(self):
         if os.path.exists(self.sock_path):
@@ -131,13 +113,11 @@ class Daemon():
                     
                     self.handle_command(command,arguments,client)
 
-                    self.update_cfg()
 
 
         finally:
             self.socket.close()
             os.remove(self.sock_path)
-            self.update_cfg(False) 
             
 
 class Server():
@@ -208,7 +188,6 @@ minecraft = Server()
 minecraft.get_selected_server()
 
 daemon = Daemon(minecraft)
-daemon.update_cfg()
 
 
 daemon.communicate()
