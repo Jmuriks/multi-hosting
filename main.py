@@ -15,6 +15,7 @@ def real_path(value):
     return path
 
 server_commands = ["start","stop","terminate"]
+
 init = subparsers.add_parser("init")
 init.set_defaults(func = config.init)
 server = subparsers.add_parser("server")

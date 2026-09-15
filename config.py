@@ -58,6 +58,14 @@ def add_games(config:dict):
 
     config["games"].update({game: {} for game in games})
 
+def get_server_cfg(server_path:str):
+    cfg = cloud.get_file(server_path+"mbcfg.json")
+
+    if not cfg:
+        return {}
+
+    return json.load(cfg)
+    
 def add_servers(config:str):
     """
     Add server to unfinished config, game for the server must to be present in config already
@@ -70,7 +78,7 @@ def add_servers(config:str):
         if not servers:
             continue
 
-        config["games"][g].update(dict.fromkeys(servers,server_cfg_template)) # TODO Add server config from the cloud for future |CHANGE THIS !!!!!!|
+        config["games"][g].update({s: get_server_cfg(s) for s in servers}) # TODO Add server config from the cloud for future |CHANGE THIS !!!!!!|
 
 def build_from_cloud():
     """
@@ -83,8 +91,6 @@ def build_from_cloud():
     add_games(config)
     add_servers(config)
 
-    load_cfg(config)
-
     return config
 
 def add_cwd(config):
@@ -92,12 +98,12 @@ def add_cwd(config):
     cur_dir = os.getcwd()
     if cur_dir not in config["directory"]:
         config["directory"].append(cur_dir)
-    
 
 def init(args):
 
     config = build_from_cloud()
-
     add_cwd(config)
 
-    print("Done!")    
+    load_cfg(config)
+
+    print("Done!")   
