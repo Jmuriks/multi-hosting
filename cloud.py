@@ -21,6 +21,14 @@ def get_file_names(prefix:str = "")-> None | list[str]:
 
     return names
 
+def get_file_metadata(prefix:str = "")-> list[dict]|None:
+
+    objects = s3.list_objects_v2(Bucket=BUCKET,Prefix=prefix)
+    if "Contents" not in objects:
+        return
+
+    return objects["Contents"]
+
 def get_directories(prefix:str = ""):
     response = s3.list_objects_v2(Bucket=BUCKET,Delimiter="/",Prefix=prefix)
     if "CommonPrefixes" not in response:

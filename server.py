@@ -4,15 +4,8 @@ import os
 import socket
 import time
 import psutil
+import config
 from pathlib import Path
-
-def server_required():
-    with open('config.json',"r") as f:
-        config = json.load(f)
-    if not config["selected_server"]:
-        print("No server selected.")
-        return True
-    return False
 
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
@@ -52,3 +45,24 @@ def send(args):
     answer = communicate(args.command)
     print(answer)
 
+
+
+def start(args):
+
+    config.update()
+
+    games = config.get_cfg()["games"]
+
+    found = False
+    server_lease_key = ""
+    for game_name, servers in games.items():
+        if args.server_name in servers:
+            found = True
+            
+            break
+
+    if not found:
+        print("Server with this name not found")
+        return
+
+    

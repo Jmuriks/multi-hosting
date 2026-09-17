@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 import config
-import server as sr
+import server
 
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
@@ -14,14 +14,15 @@ def real_path(value):
     
     return path
 
-server_commands = ["start","stop","terminate"]
+
 
 init = subparsers.add_parser("init")
 init.set_defaults(func = config.init)
-server = subparsers.add_parser("server")
-server.add_argument("command",help="Send command to server/daemon",choices=server_commands)
-server.set_defaults(func = sr.send)
-
+start = subparsers.add_parser("start")
+start.add_argument("server_name", help="Try to start the server")
+start.set_defaults(func = server.start)
+ls = subparsers.add_parser("ls",help="List servers")
+# ls.set_defaults(func = config.list_servers)
 
 args = parser.parse_args()
 # print(args)
