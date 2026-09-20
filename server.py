@@ -45,24 +45,26 @@ def send(args):
     answer = communicate(args.command)
     print(answer)
 
+def check_lease(lease:dict):
+    pass
+
+def get_lease_name(server_path:str):
+    lease_name = server_path.removesuffix("/").replace("/","-")
+    return lease_name
 
 
 def start(args):
 
     config.update()
 
-    games = config.get_cfg()["games"]
-
-    found = False
-    server_lease_key = ""
-    for game_name, servers in games.items():
-        if args.server_name in servers:
-            found = True
-            
-            break
-
-    if not found:
-        print("Server with this name not found")
+    server = config.get_cfg()["servers"].get(args.server_name)
+    if not server:
+        print("Server not found")
         return
 
-    
+    lease_name = get_lease_name(server["server_path"])
+    lease = config.get_cfg()["lease"].get(lease_name)
+    if not lease:
+        pass # Create lease
+    if check_lease(lease):
+        pass # Create lease

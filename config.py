@@ -5,7 +5,7 @@ from pathlib import Path
 
 config_template = {
     "directory": [],
-    "games": {},
+    "servers": {},
     "lease": {}
 }
 server_cfg_template = {}
@@ -56,32 +56,35 @@ def load_cfg(config:dict):
     with open("config.json","w") as file:
         json.dump(config,file,indent=4)
 
-def add_games(config:dict):
-    games = cloud.get_directories()
-
-    config["games"].update({game: {} for game in games if game != lease_dir_name})
-
 def get_server_cfg(server_path:str):
     cfg = cloud.get_file(server_path+"mbcfg.json")
-
+    default = {"server_path": server_path}
     if not cfg:
-        return {}
+        return default
 
-    return json.load(cfg)
+    mb_cfg = json.load(cfg)
+    default.update(mb_cfg) 
+
+    return default
     
-def add_servers(config:str):
+def add_servers(config:dict):
     """
-    Add server to unfinished config, game for the server must to be present in config already
+    Add server to unfinished config
     """
-    for g in config["games"].keys():
+    games = cloud.get_directories()
+    for g in games:
+        if g == lease_dir_name:
+            continue
+
         servers = cloud.get_directories(g)
-
-        print(servers)
-
         if not servers:
             continue
 
-        config["games"][g].update({s: get_server_cfg(s) for s in servers})
+        for server_path in servers:
+
+            server_name = server_path.removeprefix(g).removesuffix("/")
+
+            config["servers"].update({server_name:get_server_cfg(server_path)})
 
 def build_from_cloud()->dict:
     """
@@ -91,7 +94,6 @@ def build_from_cloud()->dict:
     if not config:
         config = config_template
 
-    add_games(config)
     add_servers(config)
     add_lease(config)
 
@@ -115,7 +117,8 @@ def add_lease(config:dict):
             continue
 
         lease["LastModified"] = lease["LastModified"].isoformat()
-        config["lease"].update({lease.pop("Key"):lease})
+        lease_name = lease.pop("Key").removeprefix(lease_dir_name).removesuffix("/")
+        config["lease"].update({lease_name:lease})
 
 def update():
     """
