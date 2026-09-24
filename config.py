@@ -4,7 +4,8 @@ import cloud
 from pathlib import Path
 
 config_template = {
-    "directory": [],
+    "daemon_pid": None,
+    "directory": "",
     "servers": {},
     "lease": {}
 }
@@ -102,8 +103,8 @@ def build_from_cloud()->dict:
 def add_cwd(config):
     
     cur_dir = os.getcwd()
-    if cur_dir not in config["directory"]:
-        config["directory"].append(cur_dir)
+    if cur_dir != config["directory"]:
+        config["directory"] = cur_dir
 
 def add_lease(config:dict):
 
@@ -117,7 +118,7 @@ def add_lease(config:dict):
             continue
 
         lease["LastModified"] = lease["LastModified"].isoformat()
-        lease_name = lease.pop("Key").removeprefix(lease_dir_name).removesuffix("/")
+        lease_name = lease.get("Key").removeprefix(lease_dir_name).removesuffix("/")
         config["lease"].update({lease_name:lease})
 
 def update():

@@ -44,6 +44,20 @@ def get_file(key:str):
     except:
         return None
 
+def make_file(key:str,body,if_match:str = None,if_none_match:str = None):
+    kwargs = {
+        "Bucket": BUCKET,
+        "Key": key,
+        "Body": body
+    }
+
+    if if_match is not None:
+        kwargs["IfMatch"] = if_match
+    if if_none_match is not None:
+        kwargs["IfNoneMatch"] = if_none_match
+
+    s3.put_object(**kwargs)
+
 def download_directory(prefix:str,local_path: Path):
     """
     Download directory from cloud and recreate hierarchy

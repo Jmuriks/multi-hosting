@@ -5,7 +5,12 @@ import socket
 import time
 import psutil
 import config
+import cloud
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+EXPIRED_TIME = 30
 
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
@@ -24,34 +29,40 @@ def communicate(message:str)->str:
 
 def is_daemon_alive():
 
-    with open("config.json",'r') as f:
-        config = json.load(f)
+    cfg = config.get_cfg()
     
-    if config["daemon_pid"] is not None and psutil.pid_exists(config["daemon_pid"]):
+    if cfg["daemon_pid"] is not None and psutil.pid_exists(cfg["daemon_pid"]):
         return True
     else:
         return False
 
-def send(args):
-    if not os.path.exists("./config.json"):
-        print("No server initialised")
-        return
-    if server_required():
-        return
-    if not is_daemon_alive() and args.command == "start":
-        daemon = subprocess.Popen(["python3","daemon.py"],cwd=Path(".").resolve())
+def start_daemon():
+    main_path = Path(__file__).resolve().parent
+    if not is_daemon_alive():
+        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path)
         time.sleep(1)
 
-    answer = communicate(args.command)
-    print(answer)
+def lease_expired(lease:dict):
+    now = datetime.now(timezone.utc)
 
-def check_lease(lease:dict):
-    pass
+    last_mod = datetime.fromisoformat(lease["LastModified"])
+
+    time_delta = now - last_mod
+
+    if time_delta.total_seconds() > EXPIRED_TIME:
+        return True
+    else:
+        return False
+
+def take_lease(lease_name:str, lease:dict = None):
+    if lease is None:
+        cloud.make_file("lease/"+lease_name, body= b"", if_none_match="*")
+        return
+    cloud.make_file(key = "lease/"+lease_name,body= b"",if_match= lease["ETag"])
 
 def get_lease_name(server_path:str):
     lease_name = server_path.removesuffix("/").replace("/","-")
     return lease_name
-
 
 def start(args):
 
@@ -65,6 +76,14 @@ def start(args):
     lease_name = get_lease_name(server["server_path"])
     lease = config.get_cfg()["lease"].get(lease_name)
     if not lease:
-        pass # Create lease
-    if check_lease(lease):
-        pass # Create lease
+        take_lease(lease_name)
+        cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
+        # Start server via daemon | daemon needs to be updated
+
+    if lease_expired(lease):
+        take_lease(lease_name, lease)
+        cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
+        start_daemon()
+        print(communicate(f"start {args.server_name}"))
+        
+        # Start server via daemon | daemon needs to be updated

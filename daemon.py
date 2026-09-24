@@ -3,6 +3,8 @@ import socket
 import json
 import os
 import time
+import config
+from pathlib import Path
 
 # TODO server.start(): Make sure that func ends only when minecraft server is setted up and accepts stdin.
 # Check if we can start two servers, and modded server
@@ -23,16 +25,25 @@ class Daemon():
         self.work = False
 
 
+    def setup_server(self, server_name):
+        cfg = config.get_cfg()
+        server_cfg = cfg["servers"].get(server_name)
+        if not server_cfg:
+            raise Exception("Server not found in the config")
 
-    def start(self)->bytes:
-        is_alive = self.server.is_alive()
-        if is_alive:
-            return "Server already started!".encode()
-        else:
-            self.server.start()
-            return "Server started!".encode() 
+        self.server.path = Path(cfg["directory"]) / server_cfg["path"]
+        self.server.ram = server_cfg.get("ram")
+        
 
-        # return f"Server couldn't start!\nstdout: {err[0]}\nstderr: {err[1]}\nreturncode{err[2]}".encode()
+    def start(self, server_name)->bytes:
+
+        if self.server.is_alive():
+            return "Server is alive already".encode()
+
+        self.setup_server(server_name)
+        self.server.start()
+
+        return "Server succesfully started! (probably)".encode()
 
     def stop(self)->bytes:
         if not self.server.is_alive():
@@ -69,7 +80,7 @@ class Daemon():
 
         return data
 
-    def split_msg(self, data):
+    def split_msg(self, data:list)->tuple[str,list]:
         parts = data[0].split()
             
         command = parts[0]
@@ -80,7 +91,7 @@ class Daemon():
     def handle_command(self,command,arguments,client):
 
         if arguments:
-            client.send("WIP".encode())
+            client.send(self.commands[command](*arguments))
         elif command in self.commands:
             client.send(self.commands[command]())
         else:
@@ -112,8 +123,6 @@ class Daemon():
                     command, arguments = self.split_msg(data)
                     
                     self.handle_command(command,arguments,client)
-
-
 
         finally:
             self.socket.close()
@@ -185,9 +194,7 @@ class Server():
             return 1 # alive
 
 minecraft = Server()
-minecraft.get_selected_server()
 
 daemon = Daemon(minecraft)
-
 
 daemon.communicate()
