@@ -31,7 +31,7 @@ class Daemon():
         if not server_cfg:
             raise Exception("Server not found in the config")
 
-        self.server.path = Path(cfg["directory"]) / server_cfg["path"]
+        self.server.path = Path(cfg["directory"]) / server_cfg["server_path"]
         self.server.ram = server_cfg.get("ram")
         
 
@@ -149,8 +149,8 @@ class Server():
             raise Exception("No server is selected")
 
     def read_std(self):
-        out = self.process.stdout.read()
-        err = self.process.stderr.read()
+        out = self.process.stdout.readlines()
+        err = self.process.stderr.readlines()
         returncode = self.process.returncode
 
         return (out,err,returncode)
@@ -164,6 +164,13 @@ class Server():
                         stderr = subprocess.PIPE,
                         text = True,
                         cwd = self.path)
+
+        out = self.read_std()[0]
+        print(f"STDOUT of server after start is {out}")
+        for line in out:
+            if "Done" in line:
+                print("Done found in server stdout")
+                return True
         
         return self.is_alive()
 

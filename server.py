@@ -12,6 +12,8 @@ from pathlib import Path
 
 EXPIRED_TIME = 30
 
+daemon = None
+
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
         return "Daemon socket doesn't exist"
@@ -39,8 +41,12 @@ def is_daemon_alive():
 def start_daemon():
     main_path = Path(__file__).resolve().parent
     if not is_daemon_alive():
-        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path)
+        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         time.sleep(1)
+
+def debug_daemon():
+    for line in daemon.stdout:
+        print("Daemon:",line,end="")
 
 def lease_expired(lease:dict):
     now = datetime.now(timezone.utc)
@@ -85,5 +91,5 @@ def start(args):
         cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
         start_daemon()
         print(communicate(f"start {args.server_name}"))
-        
+        debug_daemon()
         # Start server via daemon | daemon needs to be updated
