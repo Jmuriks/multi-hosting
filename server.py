@@ -41,8 +41,10 @@ def is_daemon_alive():
 def start_daemon():
     main_path = Path(__file__).resolve().parent
     if not is_daemon_alive():
-        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,text=True)
         time.sleep(1)
+        if daemon.poll() is not None:
+            print(f"Daemon died ({daemon.returncode})")
 
 def debug_daemon():
     for line in daemon.stdout:
@@ -91,5 +93,5 @@ def start(args):
         cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
         start_daemon()
         print(communicate(f"start {args.server_name}"))
-        debug_daemon()
+        # debug_daemon()
         # Start server via daemon | daemon needs to be updated

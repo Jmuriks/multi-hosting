@@ -2,12 +2,18 @@ import subprocess
 import socket
 import json
 import os
+import threading
 import time
 import config
+from queue import Queue, Empty
 from pathlib import Path
 
 # TODO server.start(): Make sure that func ends only when minecraft server is setted up and accepts stdin.
 # Check if we can start two servers, and modded server
+
+# Start func of the server. I need to learn asyncio or threading to kill the problem with readline() so it doesnt stuck on it forever.
+
+END = object()
 
 class Daemon():
     def __init__(self, server):
@@ -135,6 +141,8 @@ class Server():
         self.ram = None
         self.path = None
         self.running = False
+        self.stdout_q = Queue()
+        self.stdout_reader = None
 
     def get_selected_server(self)-> dict:
         try:
@@ -154,25 +162,58 @@ class Server():
         returncode = self.process.returncode
 
         return (out,err,returncode)
+    
+    def read_stdout(self):
+        for line in self.process.stdout:
+            self.stdout_q.put(line)
+        self.stdout_q.put(END)
 
+    def receive_stdout(self,tries:int)-> list[str]:
+        '''
+        Capture stdout in list for amount of tries.
+        try counts only when failed to recieve line, and resets after successful revieve
+        '''
+        tri= 0
+        lines = []
+        while True:
+            if tri >= tries:
+                break
+            try:
+                line = self.stdout_q.get(timeout=1)
+            except Empty:
+                tri += 1  
+                if self.process.poll is not None:
+                    print(f"Process died ({self.process.returncode})")
+                    break
+                continue
+            
+            if line == END:
+                print("Process closed output")
+                break
+
+            lines.append(line)
+
+        return lines
 
     def start(self)->tuple:
 
         self.process = subprocess.Popen(["java",f"-Xmx{self.ram}G","-jar","server.jar","nogui"],
                         stdout = subprocess.PIPE,
                         stdin = subprocess.PIPE,
-                        stderr = subprocess.PIPE,
+                        stderr = subprocess.STDOUT,
                         text = True,
                         cwd = self.path)
 
-        out = self.read_std()[0]
-        print(f"STDOUT of server after start is {out}")
-        for line in out:
+        self.stdout_reader = threading.Thread(target=self.read_stdout,daemon=True)
+        self.stdout_reader.start()
+
+        lines = self.receive_stdout(5)
+        for line in lines:
             if "Done" in line:
-                print("Done found in server stdout")
-                return True
-        
-        return self.is_alive()
+                print("Server started")
+                return
+        print("Last message for java\n","".join(lines))
+        raise Exception("Server couldn't start")
 
     def stop(self):
 
