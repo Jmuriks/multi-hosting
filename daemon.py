@@ -195,7 +195,7 @@ class Server():
 
         return lines
 
-    def start(self)->tuple:
+    def start(self):
 
         self.process = subprocess.Popen(["java",f"-Xmx{self.ram}G","-jar","server.jar","nogui"],
                         stdout = subprocess.PIPE,
@@ -228,8 +228,10 @@ class Server():
             except subprocess.TimeoutExpired:
                 continue
 
-        print("Failed to stop the server.")
-        return None
+        print("Failed to stop the server. Killing.")
+
+        self.process.kill()
+        return self.process.wait(5.0)
         
 
     def is_alive(self): 

@@ -39,12 +39,15 @@ def is_daemon_alive():
         return False
 
 def start_daemon():
+    if is_daemon_alive():
+        return
+    
     main_path = Path(__file__).resolve().parent
-    if not is_daemon_alive():
-        daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,text=True)
-        time.sleep(1)
-        if daemon.poll() is not None:
-            print(f"Daemon died ({daemon.returncode})")
+    
+    daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,text=True)
+    time.sleep(1)
+    if daemon.poll() is not None:
+        print(f"Daemon died ({daemon.returncode})")
 
 def debug_daemon():
     for line in daemon.stdout:
@@ -83,15 +86,14 @@ def start(args):
 
     lease_name = get_lease_name(server["server_path"])
     lease = config.get_cfg()["lease"].get(lease_name)
-    if not lease:
-        take_lease(lease_name)
-        cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
-        # Start server via daemon | daemon needs to be updated
 
-    if lease_expired(lease):
+    if not lease or lease_expired(lease):
         take_lease(lease_name, lease)
         cloud.download_directory(server["server_path"],Path(config.get_cfg()["directory"]))
         start_daemon()
         print(communicate(f"start {args.server_name}"))
-        # debug_daemon()
         # Start server via daemon | daemon needs to be updated
+
+def stop(args):
+
+    
