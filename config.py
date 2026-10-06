@@ -2,8 +2,10 @@ import json
 import os
 import cloud
 from pathlib import Path
+from uuid import uuid4
 
 config_template = {
+    "device_id": None,
     "daemon_pid": None,
     "directory": "",
     "servers": {},
@@ -106,6 +108,9 @@ def add_cwd(config):
     if cur_dir != config["directory"]:
         config["directory"] = cur_dir
 
+def get_lease_owner(lease_key:str):
+    return cloud.get_custom_metadata(lease_key).get("owner")
+
 def add_lease(config:dict):
 
     leases = cloud.get_file_metadata(lease_dir_name)
@@ -118,8 +123,14 @@ def add_lease(config:dict):
             continue
 
         lease["LastModified"] = lease["LastModified"].isoformat()
+        lease["owner"] = get_lease_owner(lease["Key"])
         lease_name = lease.get("Key").removeprefix(lease_dir_name).removesuffix("/")
+
         config["lease"].update({lease_name:lease})
+
+def add_device_id(config:dict):
+    device_id = str(uuid4())
+    config["device_id"] = device_id
 
 def update():
     """
@@ -129,7 +140,7 @@ def update():
     config = get_cfg()
 
     if not config:
-        answ = input("Make this directory for servers? y/n")
+        answ = input("Make this directory for servers? y/n ")
         if answ.lower() != "y":
             print("Write 'mb-server init' in the directory where you want servers to be downloaded")
             return
@@ -144,6 +155,7 @@ def init(args = None):
 
     config = build_from_cloud()
     add_cwd(config)
+    add_device_id(config)
 
     load_cfg(config)
 

@@ -23,7 +23,8 @@ class Daemon():
         self.commands = {
             "start":self.start,
             "stop":self.stop,
-            "terminate":self.terminate
+            "terminate":self.terminate,
+            "send_server_path":self.send_server_path
         }
         self.server = server
 
@@ -66,6 +67,8 @@ class Daemon():
 
         return "Terminating Daemon.".encode()
 
+    def send_server_path(self)->bytes:
+        return str(self.server.path).encode()
 
 
     def create_socket(self):

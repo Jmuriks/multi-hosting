@@ -29,6 +29,11 @@ def get_file_metadata(prefix:str = "")-> list[dict]|None:
 
     return objects["Contents"]
 
+def get_custom_metadata(key:str)->dict|None:
+    response = s3.head_object(Bucket= BUCKET, Key= key)
+    return response.get("Metadata")
+
+
 def get_directories(prefix:str = ""):
     response = s3.list_objects_v2(Bucket=BUCKET,Delimiter="/",Prefix=prefix)
     if "CommonPrefixes" not in response:
@@ -44,7 +49,7 @@ def get_file(key:str):
     except:
         return None
 
-def make_file(key:str,body,if_match:str = None,if_none_match:str = None):
+def make_file(key:str,body,if_match:str = None,if_none_match:str = None, metadata:dict[str,str] = None):
     kwargs = {
         "Bucket": BUCKET,
         "Key": key,
@@ -55,6 +60,8 @@ def make_file(key:str,body,if_match:str = None,if_none_match:str = None):
         kwargs["IfMatch"] = if_match
     if if_none_match is not None:
         kwargs["IfNoneMatch"] = if_none_match
+    if metadata is not None:
+        kwargs["Metadata"] = metadata
 
     s3.put_object(**kwargs)
 
@@ -78,3 +85,4 @@ def download_directory(prefix:str,local_path: Path):
         print(local_file)
 
         s3.download_file(BUCKET, file, str(local_file))
+
