@@ -60,7 +60,7 @@ def load_cfg(config:dict):
         json.dump(config,file,indent=4)
 
 def get_server_cfg(server_path:str):
-    cfg = cloud.get_file(server_path+"mbcfg.json")
+    cfg = cloud.get_file(server_path+"/"+"mbcfg.json")
     default = {"server_path": server_path}
     if not cfg:
         return default
@@ -85,7 +85,8 @@ def add_servers(config:dict):
 
         for server_path in servers:
 
-            server_name = server_path.removeprefix(g).removesuffix("/")
+            server_path = server_path.removesuffix("/")
+            server_name = server_path.removeprefix(g)
 
             config["servers"].update({server_name:get_server_cfg(server_path)})
 
@@ -98,7 +99,7 @@ def build_from_cloud()->dict:
         config = config_template
 
     add_servers(config)
-    add_lease(config)
+    update_lease(config)
 
     return config
 
@@ -111,7 +112,9 @@ def add_cwd(config):
 def get_lease_owner(lease_key:str):
     return cloud.get_custom_metadata(lease_key).get("owner")
 
-def add_lease(config:dict):
+def update_lease(config:dict):
+
+    config["lease"] = {}
 
     leases = cloud.get_file_metadata(lease_dir_name)
     if not leases:
@@ -142,8 +145,7 @@ def update():
     if not config:
         answ = input("Make this directory for servers? y/n ")
         if answ.lower() != "y":
-            print("Write 'mb-server init' in the directory where you want servers to be downloaded")
-            return
+            raise Exception("Write 'mb-server init' in the directory where you want servers to be downloaded")
 
         init()
 

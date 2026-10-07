@@ -33,7 +33,6 @@ def get_custom_metadata(key:str)->dict|None:
     response = s3.head_object(Bucket= BUCKET, Key= key)
     return response.get("Metadata")
 
-
 def get_directories(prefix:str = ""):
     response = s3.list_objects_v2(Bucket=BUCKET,Delimiter="/",Prefix=prefix)
     if "CommonPrefixes" not in response:
@@ -76,13 +75,23 @@ def download_directory(prefix:str,local_path: Path):
     server_local_path = local_path / prefix
     server_local_path.mkdir(parents=True,exist_ok=True)
     
+    counter = 0
 
     for file in insides:
 
         local_file = server_local_path / file.removeprefix(prefix)
         local_file.parent.mkdir(parents=True,exist_ok=True)
 
-        print(local_file)
+        counter += 1
+        print(f"({counter}):",local_file)
 
         s3.download_file(BUCKET, file, str(local_file))
 
+def delete_file(key:str,if_match:str = None):
+    kwargs = {
+        "Bucket":BUCKET,
+        "Key":key
+    }
+    if if_match:
+        kwargs["IfMatch"] = if_match
+    s3.delete_object(**kwargs)

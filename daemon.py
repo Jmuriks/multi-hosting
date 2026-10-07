@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import config
+import server
 from queue import Queue, Empty
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from pathlib import Path
 END = object()
 
 class Daemon():
-    def __init__(self, server):
+    def __init__(self, server_game):
         self.sock_path = "/tmp/mine_daemon.sock"
         self.socket = None
         self.buffer = ""
@@ -26,11 +27,14 @@ class Daemon():
             "terminate":self.terminate,
             "send_server_path":self.send_server_path
         }
-        self.server = server
+        self.server = server_game
 
         self.acceptig = False
         self.work = False
 
+        self.stop_event = threading.Event()
+        self.lease_extender = None
+        
 
     def setup_server(self, server_name):
         cfg = config.get_cfg()
@@ -49,6 +53,11 @@ class Daemon():
 
         self.setup_server(server_name)
         self.server.start()
+        self.lease_extender = threading.Thread(target= server.extend_lease_cycle,
+                                                args = (server.get_lease_name(config.get_cfg()["servers"][self.server.path.name].get("server_path")),
+                                                    self.stop_event),
+                                                daemon=True)
+        self.lease_extender.start()
 
         return "Server succesfully started! (probably)".encode()
 
@@ -58,6 +67,8 @@ class Daemon():
         returncode = self.server.stop()
         if returncode is None:
             return "Couldn't end the server!".encode()
+
+        self.stop_event.set()
         
         return f"Server ended with {returncode} code".encode()
 
@@ -68,7 +79,7 @@ class Daemon():
         return "Terminating Daemon.".encode()
 
     def send_server_path(self)->bytes:
-        return str(self.server.path).encode()
+        return str(self.server.path.relative_to(self.server.path.parent.parent)).encode()
 
 
     def create_socket(self):
@@ -134,9 +145,11 @@ class Daemon():
                     self.handle_command(command,arguments,client)
 
         finally:
+            self.server.kill()
             self.socket.close()
             os.remove(self.sock_path)
-            
+            print("Server killed, Socket deleted.")
+         
 
 class Server():
     def __init__(self):
@@ -185,7 +198,7 @@ class Server():
                 line = self.stdout_q.get(timeout=1)
             except Empty:
                 tri += 1  
-                if self.process.poll is not None:
+                if self.process.poll() is not None:
                     print(f"Process died ({self.process.returncode})")
                     break
                 continue
@@ -200,7 +213,7 @@ class Server():
 
     def start(self):
 
-        self.process = subprocess.Popen(["java",f"-Xmx{self.ram}G","-jar","server.jar","nogui"],
+        self.process = subprocess.Popen(["java",f"-Xmx{self.ram if self.ram is not None else 4}G","-jar","server.jar","nogui"],
                         stdout = subprocess.PIPE,
                         stdin = subprocess.PIPE,
                         stderr = subprocess.STDOUT,
@@ -210,7 +223,7 @@ class Server():
         self.stdout_reader = threading.Thread(target=self.read_stdout,daemon=True)
         self.stdout_reader.start()
 
-        lines = self.receive_stdout(5)
+        lines = self.receive_stdout(7)
         for line in lines:
             if "Done" in line:
                 print("Server started")
@@ -235,7 +248,9 @@ class Server():
 
         self.process.kill()
         return self.process.wait(5.0)
-        
+
+    def kill(self):
+        self.process.kill()        
 
     def is_alive(self): 
         if not self.process: # never started
