@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 config_template = {
+    "s3_api": "",
     "device_id": None,
     "daemon_pid": None,
     "directory": "",
@@ -69,7 +70,7 @@ def get_server_cfg(server_path:str):
     default.update(mb_cfg) 
 
     return default
-    
+
 def add_servers(config:dict):
     """
     Add server to unfinished config
@@ -90,18 +91,13 @@ def add_servers(config:dict):
 
             config["servers"].update({server_name:get_server_cfg(server_path)})
 
-def build_from_cloud()->dict:
+def build_from_cloud(config):
     """
     Adds games, servers, leases from cloud to config
     """
-    config = get_cfg()
-    if not config:
-        config = config_template
 
     add_servers(config)
     update_lease(config)
-
-    return config
 
 def add_cwd(config):
     
@@ -135,27 +131,39 @@ def add_device_id(config:dict):
     device_id = str(uuid4())
     config["device_id"] = device_id
 
-def update():
+def update(suggest_init:bool = True):
     """
     Updates config
     """
 
     config = get_cfg()
 
-    if not config:
+    if not config and suggest_init:
         answ = input("Make this directory for servers? y/n ")
         if answ.lower() != "y":
             raise Exception("Write 'mb-server init' in the directory where you want servers to be downloaded")
-
+        
         init()
-
-    config = build_from_cloud()
-    load_cfg(config)
+        return
+    elif config:
+        build_from_cloud(config)
+        load_cfg(config)
+    else:
+        raise Exception("No config found, and doesnt suggest init.")
 
 
 def init(args = None):
 
-    config = build_from_cloud()
+    s3_api = input("Past S3 API link here: ")
+
+    config = config_template
+    config["s3_api"] = s3_api
+
+    load_cfg(config)
+    cloud.init_s3(s3_api)
+    
+
+    build_from_cloud(config)
     add_cwd(config)
     add_device_id(config)
 

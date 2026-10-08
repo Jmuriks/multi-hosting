@@ -5,4 +5,5 @@
 !server.py
 !daemon.py
 !cloud.py
+!settings.py
 !.venv

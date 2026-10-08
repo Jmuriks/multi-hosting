@@ -1,12 +1,27 @@
 import boto3
+import settings
 from pathlib import Path
 
 BUCKET = "mb-server"
 
-s3 = boto3.client("s3",
-                  endpoint_url = "https://8173727c1540e7d441f59a527eb3db30.r2.cloudflarestorage.com",
-                  region_name = "auto"
-                  )
+s3 = None
+
+def init_s3(url_endpoint:str):
+    global s3
+
+    s3_api = url_endpoint.rstrip("/")
+    
+    s3 = boto3.client("s3",
+                    endpoint_url = s3_api,
+                    region_name = "auto"
+                    )
+
+def get_s3_api():
+    try:
+        return settings.get_cfg().get("s3_api")
+    except Exception as e:
+        print(f"Couldnt get S3 API\n{e}")
+        return
 
 def get_file_names(prefix:str = "")-> None | list[str]:
 
@@ -95,3 +110,7 @@ def delete_file(key:str,if_match:str = None):
     if if_match:
         kwargs["IfMatch"] = if_match
     s3.delete_object(**kwargs)
+
+s3_api = get_s3_api()
+if s3_api:
+    init_s3(s3_api)

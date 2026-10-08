@@ -9,10 +9,7 @@ import server
 from queue import Queue, Empty
 from pathlib import Path
 
-# TODO server.start(): Make sure that func ends only when minecraft server is setted up and accepts stdin.
-# Check if we can start two servers, and modded server
 
-# Start func of the server. I need to learn asyncio or threading to kill the problem with readline() so it doesnt stuck on it forever.
 
 END = object()
 
@@ -121,12 +118,21 @@ class Daemon():
         try:
             self.create_socket()
             self.socket.listen()
+            self.socket.settimeout(3)
 
             self.accepting = True
             while self.accepting:
 
-                client, addr = self.socket.accept()
-
+                try:
+                    client, addr = self.socket.accept()
+                except TimeoutError:
+                    # Check lease_extender every 3 sec
+                    if not self.lease_extender.is_alive():
+                        self.server.stop()
+                        self.close_communication()
+                        break
+                    continue
+                    
                 self.work = True
                 while self.work:
 
