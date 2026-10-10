@@ -9,6 +9,7 @@ config_template = {
     "device_id": None,
     "daemon_pid": None,
     "directory": "",
+    "sync_period": 3600,
     "servers": {},
     "lease": {}
 }
@@ -67,9 +68,30 @@ def get_server_cfg(server_path:str):
         return default
 
     mb_cfg = json.load(cfg)
-    default.update(mb_cfg) 
+    default.update(mb_cfg)
 
     return default
+
+def create_server_cfg(server_path:str) -> dict:
+    '''
+    Returns dict with server config
+    '''
+    server_path = server_path.removesuffix("/")
+
+    cfg = {"server_path": server_path}
+    mbcfg = cloud.get_file(server_path+'/'+"mbcfg.json")
+    if mbcfg:
+        mbcfg = json.load(mbcfg)
+        cfg.update(mbcfg)
+
+    current_archive = cloud.get_file(server_path+'/'+"current.json")
+    if not current_archive:
+        raise Exception("File current.json wasnt found in server directory")
+    current_archive = json.load(current_archive)
+    cfg.update(current_archive)
+
+    return cfg
+
 
 def add_servers(config:dict):
     """
@@ -89,7 +111,7 @@ def add_servers(config:dict):
             server_path = server_path.removesuffix("/")
             server_name = server_path.removeprefix(g)
 
-            config["servers"].update({server_name:get_server_cfg(server_path)})
+            config["servers"].update({server_name:create_server_cfg(server_path)})
 
 def build_from_cloud(config):
     """
@@ -163,10 +185,10 @@ def init(args = None):
     cloud.init_s3(s3_api)
     
 
-    build_from_cloud(config)
     add_cwd(config)
     add_device_id(config)
+    build_from_cloud(config)
 
     load_cfg(config)
 
-    print("Done!")   
+    print("Initialisation Done!")   

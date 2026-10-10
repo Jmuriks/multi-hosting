@@ -102,6 +102,19 @@ def download_directory(prefix:str,local_path: Path):
 
         s3.download_file(BUCKET, file, str(local_file))
 
+def upload_directory(path:str, prefix:str = ""):
+    director = Path(path)
+    counter = 0
+    for item in director.rglob("*"):
+        if item.is_file():
+            relative_path = item.relative_to(director)
+            s3.upload_file(item,Bucket=BUCKET,Key=prefix+str(relative_path))
+            counter += 1
+            print(f"({counter}): {relative_path}")
+
+def upload_file(key:str, file_path:str):
+    s3.upload_file(Filename=file_path,Bucket=BUCKET,Key=key)
+
 def delete_file(key:str,if_match:str = None):
     kwargs = {
         "Bucket":BUCKET,

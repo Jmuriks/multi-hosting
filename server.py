@@ -4,6 +4,7 @@ import os
 import socket
 import time
 import psutil
+import shutil
 import config
 import cloud
 from datetime import datetime, timezone
@@ -95,6 +96,69 @@ def extend_lease_cycle(lease_name:str, stop_event):
         
         cloud.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
 
+def sync_server_cycle(server_path:str, stop_event):
+    while not stop_event.is_set():
+        if stop_event.wait(config.get_cfg()["sync_period"]):
+            break
+
+def download_server():
+    pass
+
+def load_server(server_path):
+    '''
+    server_path: Can be either path from daemon or from config
+    '''
+    # Load on cloud everything by server_path
+    # Make sure not waste thousands of class A operations
+    # And make it faster a bit.
+    server_path = Path(server_path)
+    server_name = server_path.name()
+
+    cfg =  config.get_cfg()
+
+    server = cfg["servers"].get(server_name)
+    abs_path = Path(cfg["directory"]) / server["server_path"]
+
+    archive_path = archive_server(abs_path)
+
+    key = Path(archive_path).relative_to(cfg["directory"])
+
+    cloud.upload_file(key, archive_path)
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": key}))
+    
+def archive_server(server_path):
+    '''
+    server_path: absolute server path
+    '''
+    archive_path = server_path + "_" + datetime.now(timezone.utc).isoformat()
+    shutil.make_archive(archive_path,
+                        "zip",
+                        server_path)
+
+    return archive_path
+    
+def clean_old_server(server_path):
+    archive_names = cloud.get_file_names(server_path+"/")
+
+    dates:list[datetime] = []
+    
+    for obj in archive_names:
+        if obj == "current.json":
+            archive_names.remove(obj)
+        dates.append(datetime.fromisoformat(obj.split("_")[-1]))
+
+    if len(dates) < 3:
+        return
+
+    oldest_date = min(dates).isoformat()
+    oldest_archive_name = None
+
+    for obj in archive_names:
+        if oldest_date in obj:
+            oldest_archive_name = obj
+
+    cloud.delete_file(server_path+'/'+oldest_archive_name)
+
 def get_lease(lease_name:str)->dict:
     lease = config.get_cfg()["lease"].get(lease_name)
     if not lease:
@@ -157,12 +221,16 @@ def start(args):
 
 def stop(args):
     config.update()
+    cfg = config.get_cfg()
 
     if not am_i_host(args.server_name):
         print("You cannot stop server that you're not a host of")
         return
     
     print(communicate("stop"))
+
+    # load_server(cfg["servers"][args.server_name])
+    # clean_old_server(cfg["servers"][args.server_name])
     
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
     release_lease(lease)

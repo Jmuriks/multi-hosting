@@ -9,7 +9,7 @@ import server
 from queue import Queue, Empty
 from pathlib import Path
 
-
+# TODO Sync server to cloud every n seconds, Make uploading and Downloading server from/to cloud more efficient.
 
 END = object()
 
@@ -31,6 +31,7 @@ class Daemon():
 
         self.stop_event = threading.Event()
         self.lease_extender = None
+        self.server_syncer = None
         
 
     def setup_server(self, server_name):
@@ -50,6 +51,7 @@ class Daemon():
 
         self.setup_server(server_name)
         self.server.start()
+        self.stop_event.clear()
         self.lease_extender = threading.Thread(target= server.extend_lease_cycle,
                                                 args = (server.get_lease_name(config.get_cfg()["servers"][self.server.path.name].get("server_path")),
                                                     self.stop_event),
@@ -127,6 +129,8 @@ class Daemon():
                     client, addr = self.socket.accept()
                 except TimeoutError:
                     # Check lease_extender every 3 sec
+                    if not self.server.is_alive():
+                        continue    
                     if not self.lease_extender.is_alive():
                         self.server.stop()
                         self.close_communication()
