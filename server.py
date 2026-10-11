@@ -101,8 +101,18 @@ def sync_server_cycle(server_path:str, stop_event):
         if stop_event.wait(config.get_cfg()["sync_period"]):
             break
 
-def download_server():
+
+def download_server(server_name:str):
     pass
+    cfg = config.get_cfg()
+    server = cfg["servers"][server_name]
+    server_archive = server["archive"]
+
+    archive_ext_path:Path = Path(cfg["directory"]) / server_archive
+    archive_ext_path.parent.mkdir(parents=True,exist_ok=True)
+
+    cloud.download_file(server_archive, archive_ext_path)
+    shutil.unpack_archive(archive_ext_path, Path(cfg["directory"]) / server["server_path"], "zip")
 
 def load_server(server_path):
     '''
@@ -111,8 +121,8 @@ def load_server(server_path):
     # Load on cloud everything by server_path
     # Make sure not waste thousands of class A operations
     # And make it faster a bit.
-    server_path = Path(server_path)
-    server_name = server_path.name()
+    server_path1 = Path(server_path)
+    server_name = server_path1.name
 
     cfg =  config.get_cfg()
 
@@ -123,19 +133,19 @@ def load_server(server_path):
 
     key = Path(archive_path).relative_to(cfg["directory"])
 
-    cloud.upload_file(key, archive_path)
-    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": key}))
+    cloud.upload_file(str(key), archive_path)
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
     
-def archive_server(server_path):
+def archive_server(server_path)->str:
     '''
     server_path: absolute server path
     '''
-    archive_path = server_path + "_" + datetime.now(timezone.utc).isoformat()
+    archive_path = str(server_path) + "_" + datetime.now(timezone.utc).isoformat()
     shutil.make_archive(archive_path,
                         "zip",
                         server_path)
 
-    return archive_path
+    return archive_path + ".zip"
     
 def clean_old_server(server_path):
     archive_names = cloud.get_file_names(server_path+"/")
@@ -145,7 +155,8 @@ def clean_old_server(server_path):
     for obj in archive_names:
         if obj == "current.json":
             archive_names.remove(obj)
-        dates.append(datetime.fromisoformat(obj.split("_")[-1]))
+            continue
+        dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
 
     if len(dates) < 3:
         return
@@ -212,7 +223,7 @@ def start(args):
     lease = config.get_cfg()["lease"].get(lease_name)
 
     if not lease or lease_expired(lease):
-        # cloud.download_directory(server["server_path"]+"/",Path(config.get_cfg()["directory"]))
+        download_server(args.server_name)
         start_daemon()
         print(communicate(f"start {args.server_name}"))
         take_lease(lease_name, lease)
@@ -229,8 +240,8 @@ def stop(args):
     
     print(communicate("stop"))
 
-    # load_server(cfg["servers"][args.server_name])
-    # clean_old_server(cfg["servers"][args.server_name])
+    load_server(cfg["servers"][args.server_name]["server_path"])
+    # clean_old_server(cfg["servers"][args.server_name]["server_path"])
     
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
     release_lease(lease)

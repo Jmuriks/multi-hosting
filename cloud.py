@@ -102,6 +102,9 @@ def download_directory(prefix:str,local_path: Path):
 
         s3.download_file(BUCKET, file, str(local_file))
 
+def download_file(key:str, path):
+    s3.download_file(Bucket=BUCKET, Key=key, Filename=str(path))
+
 def upload_directory(path:str, prefix:str = ""):
     director = Path(path)
     counter = 0
