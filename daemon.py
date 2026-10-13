@@ -227,7 +227,6 @@ class Server():
             
             if line == END:
                 print("Process closed output")
-                break
 
             lines.append(line)
 
@@ -245,7 +244,7 @@ class Server():
         self.stdout_reader = threading.Thread(target=self.read_stdout,daemon=True)
         self.stdout_reader.start()
 
-        lines = self.receive_stdout(10)
+        lines = self.receive_stdout(15)
         for line in lines:
             if "Done" in line:
                 print("Server started")
@@ -254,22 +253,25 @@ class Server():
         raise Exception("Server couldn't start")
 
     def stop(self):
+        '''
+        Returns returncode, stops the server, or kills when failed to stop.
+        '''
 
         if not self.is_alive():
             return
 
-        for _ in range(2):
-            self.process.stdin.write("stop\n")
-            self.process.stdin.flush()
-            try:
-                return self.process.wait(10.0)
-            except subprocess.TimeoutExpired:
-                continue
+        self.process.stdin.write("stop\n")
+        self.process.stdin.flush()
 
-        print("Failed to stop the server. Killing.")
+        lines = self.receive_stdout(10)
+        if lines[-1] != END:
+            print("Couldnt stop the server, killing")
+            self.process.kill()
+            return self.process.poll()
+        else:
+            print("Succesfully stoped server")
+            return self.process.poll()
 
-        self.process.kill()
-        return self.process.wait(5.0)
 
     def kill(self):
         self.process.kill()        

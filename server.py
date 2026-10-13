@@ -39,7 +39,7 @@ def is_daemon_alive():
         return False
 
     for pid in daemon.keys():
-        if psutil.pid_exists(pid):
+        if psutil.pid_exists(int(pid)):
             return True
         else:
             return False
@@ -187,7 +187,7 @@ def clean_old_server(server_path):
     dates:list[datetime] = []
     
     for obj in archive_names:
-        if obj == "current.json":
+        if obj == server_path+"/"+"current.json":
             archive_names.remove(obj)
             continue
         dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
@@ -276,7 +276,8 @@ def stop(args):
     print(communicate("stop"))
 
     load_server(cfg["servers"][args.server_name]["server_path"])
-    # clean_old_server(cfg["servers"][args.server_name]["server_path"])
+    print(communicate("stop_lease"))
+    clean_old_server(cfg["servers"][args.server_name]["server_path"])
     
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
     release_lease(lease)

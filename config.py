@@ -192,7 +192,6 @@ def update(suggest_init:bool = True):
         clear_daemon(config)
         add_daemon(config)
         build_from_cloud(config)
-        print(config["daemon"],len(config["daemon"]))
         load_cfg(config)
     else:
         raise Exception("No config found, and doesnt suggest init.")
