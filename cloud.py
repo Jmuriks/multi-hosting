@@ -1,4 +1,5 @@
 import boto3
+from botocore.config import Config
 import settings
 from pathlib import Path
 
@@ -13,7 +14,8 @@ def init_s3(url_endpoint:str):
     
     s3 = boto3.client("s3",
                     endpoint_url = s3_api,
-                    region_name = "auto"
+                    region_name = "auto",
+                    config = Config(request_checksum_calculation="when_required")
                     )
 
 def get_s3_api():
