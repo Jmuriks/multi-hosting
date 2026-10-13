@@ -9,6 +9,7 @@ import config
 import cloud
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 
 
 EXPIRED_TIME = 30
@@ -33,12 +34,15 @@ def communicate(message:str)->str:
 
 def is_daemon_alive():
 
-    cfg = config.get_cfg()
-    
-    if cfg["daemon_pid"] is not None and psutil.pid_exists(cfg["daemon_pid"]):
-        return True
-    else:
+    daemon = config.get_cfg().get("daemon")
+    if not daemon:
         return False
+
+    for pid in daemon.keys():
+        if psutil.pid_exists(pid):
+            return True
+        else:
+            return False
 
 def start_daemon():
     if is_daemon_alive():
@@ -107,12 +111,28 @@ def download_server(server_name:str):
     cfg = config.get_cfg()
     server = cfg["servers"][server_name]
     server_archive = server["archive"]
+    if server_archive == "Uploading":
+        print("Someone is uploading server on cloud, try later.")
+        return
 
     archive_ext_path:Path = Path(cfg["directory"]) / server_archive
     archive_ext_path.parent.mkdir(parents=True,exist_ok=True)
 
+    time_start = perf_counter()
+    print("Downloading Server... ",end="",flush=True)
+
     cloud.download_file(server_archive, archive_ext_path)
+
+    print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
+
+    time_start = perf_counter()
+    print("Unpacking Archive... ",end="",flush=True)
+    
     shutil.unpack_archive(archive_ext_path, Path(cfg["directory"]) / server["server_path"], "zip")
+
+    print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
+
+    os.remove(str(archive_ext_path))
 
 def load_server(server_path):
     '''
@@ -132,18 +152,32 @@ def load_server(server_path):
     archive_path = archive_server(abs_path)
 
     key = Path(archive_path).relative_to(cfg["directory"])
+    key = key.parent / server_name / key.name
 
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": "Uploading"}))
+
+    time_start = perf_counter()
+    print("Uploading to the cloud... ",end="",flush=True)
     cloud.upload_file(str(key), archive_path)
     cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
+    print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
+
+    os.remove(str(archive_path))
     
-def archive_server(server_path)->str:
+def archive_server(server_path:Path)->str:
     '''
     server_path: absolute server path
     '''
+
+    time_start = perf_counter()
+    print("Archiving Server... ",end="",flush=True)
+
     archive_path = str(server_path) + "_" + datetime.now(timezone.utc).isoformat()
     shutil.make_archive(archive_path,
                         "zip",
                         server_path)
+
+    print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
     return archive_path + ".zip"
     
@@ -227,6 +261,7 @@ def start(args):
         start_daemon()
         print(communicate(f"start {args.server_name}"))
         take_lease(lease_name, lease)
+        config.update(False)
     else:
         print("Server lease is not expired!\nServer might be already running on other host.")
 

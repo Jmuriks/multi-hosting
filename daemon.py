@@ -22,7 +22,9 @@ class Daemon():
             "start":self.start,
             "stop":self.stop,
             "terminate":self.terminate,
-            "send_server_path":self.send_server_path
+            "send_server_path":self.send_server_path,
+            "stop_lease": self.stop_lease,
+            "about_me": self.about_me
         }
         self.server = server_game
 
@@ -66,8 +68,6 @@ class Daemon():
         returncode = self.server.stop()
         if returncode is None:
             return "Couldn't end the server!".encode()
-
-        self.stop_event.set()
         
         return f"Server ended with {returncode} code".encode()
 
@@ -79,6 +79,18 @@ class Daemon():
 
     def send_server_path(self)->bytes:
         return str(self.server.path.relative_to(self.server.path.parent.parent)).encode()
+
+    def stop_lease(self)->bytes:
+
+        self.stop_event.set()
+        
+        return "Lease extension and autosync(WIP) stoped".encode()
+
+    def about_me(self)->bytes:
+
+        server_path = str(self.server.path) if self.server.is_alive() else ""
+
+        return f"{os.getpid()}_{server_path}".encode()
 
 
     def create_socket(self):
@@ -233,7 +245,7 @@ class Server():
         self.stdout_reader = threading.Thread(target=self.read_stdout,daemon=True)
         self.stdout_reader.start()
 
-        lines = self.receive_stdout(7)
+        lines = self.receive_stdout(10)
         for line in lines:
             if "Done" in line:
                 print("Server started")

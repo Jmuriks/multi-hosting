@@ -1,13 +1,15 @@
 import json
 import os
 import cloud
+import settings
+import psutil
 from pathlib import Path
 from uuid import uuid4
 
 config_template = {
     "s3_api": "",
     "device_id": None,
-    "daemon_pid": None,
+    "daemon": {},
     "directory": "",
     "sync_period": 3600,
     "servers": {},
@@ -153,6 +155,25 @@ def add_device_id(config:dict):
     device_id = str(uuid4())
     config["device_id"] = device_id
 
+def add_daemon(config:dict):
+
+    try:
+        respond = settings.communicate("about_me")
+    except:
+        return
+
+    pid, server_path = respond.split("_",1)
+    pid = str(pid)
+    server_path = settings.path_to_str_server(Path(server_path))
+
+    config["daemon"].update({pid:server_path})
+
+def clear_daemon(config:dict):
+
+    for pid in list(config["daemon"].keys()):
+        if not psutil.pid_exists(int(pid)):
+            config["daemon"].pop(pid)
+
 def update(suggest_init:bool = True):
     """
     Updates config
@@ -168,7 +189,10 @@ def update(suggest_init:bool = True):
         init()
         return
     elif config:
+        clear_daemon(config)
+        add_daemon(config)
         build_from_cloud(config)
+        print(config["daemon"],len(config["daemon"]))
         load_cfg(config)
     else:
         raise Exception("No config found, and doesnt suggest init.")
