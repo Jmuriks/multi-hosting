@@ -6,5 +6,5 @@
 !daemon.py
 !cloud.py
 !settings.py
-!.venv
+!.venv/
 !launcher.sh
