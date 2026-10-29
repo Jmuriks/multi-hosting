@@ -196,7 +196,6 @@ def update(suggest_init:bool = True):
     else:
         raise Exception("No config found, and doesnt suggest init.")
 
-
 def init(args = None):
 
     s3_api = input("Past S3 API link here: ")

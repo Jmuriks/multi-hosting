@@ -227,8 +227,11 @@ class Server():
             
             if line == END:
                 print("Process closed output")
+                lines.append(line)
+                break
 
             lines.append(line)
+            
 
         return lines
 
@@ -270,7 +273,7 @@ class Server():
             return self.process.poll()
         else:
             print("Succesfully stoped server")
-            return self.process.poll()
+            return self.process.wait()
 
 
     def kill(self):

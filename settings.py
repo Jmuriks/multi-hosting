@@ -13,7 +13,7 @@ def get_cfg()->dict|None:
             cfg = json.load(file)
         return cfg
     except:
-        print("No config found")
+        # print("No config found")
         return
 
 def load_cfg(config:dict):

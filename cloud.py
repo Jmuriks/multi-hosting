@@ -22,7 +22,7 @@ def get_s3_api():
     try:
         return settings.get_cfg().get("s3_api")
     except Exception as e:
-        print(f"Couldnt get S3 API\n{e}")
+        # print(f"Couldnt get S3 API\n{e}")
         return
 
 def get_file_names(prefix:str = "")-> None | list[str]:
@@ -129,6 +129,9 @@ def delete_file(key:str,if_match:str = None):
         kwargs["IfMatch"] = if_match
     s3.delete_object(**kwargs)
 
-s3_api = get_s3_api()
-if s3_api:
-    init_s3(s3_api)
+def try_auto_init():
+    s3_api = get_s3_api()
+    if s3_api:
+        init_s3(s3_api)
+
+try_auto_init()

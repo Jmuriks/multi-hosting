@@ -97,8 +97,8 @@ def extend_lease_cycle(lease_name:str, stop_event):
         if lease["owner"] != config.get_cfg()["device_id"] or lease_expired(lease):
             print(f"Ownership: {lease["owner"] != config.get_cfg()["device_id"]}\nLease expired {lease_expired(lease)}")
             raise Exception("You are not the owner of lease, or it expired.")
-        
-        cloud.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
+        if not stop_event.is_set():
+            cloud.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
 
 def sync_server_cycle(server_path:str, stop_event):
     while not stop_event.is_set():
@@ -182,27 +182,29 @@ def archive_server(server_path:Path)->str:
     return archive_path + ".zip"
     
 def clean_old_server(server_path):
-    archive_names = cloud.get_file_names(server_path+"/")
+    archive_keys = cloud.get_file_names(server_path+"/")
 
     dates:list[datetime] = []
     
-    for obj in archive_names:
+    for obj in archive_keys:
         if obj == server_path+"/"+"current.json":
-            archive_names.remove(obj)
+            archive_keys.remove(obj)
             continue
         dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
 
-    if len(dates) < 3:
-        return
+    while len(dates) > 3:
+        # FIND OLDEST DATE
+        oldest_date = min(dates).isoformat()
+        dates.remove(min(dates))
+        oldest_archive_key = None
 
-    oldest_date = min(dates).isoformat()
-    oldest_archive_name = None
-
-    for obj in archive_names:
-        if oldest_date in obj:
-            oldest_archive_name = obj
-
-    cloud.delete_file(server_path+'/'+oldest_archive_name)
+        # GET ACCORDING FILE NAME
+        for obj in archive_keys:
+            if oldest_date in obj:
+                oldest_archive_key = obj
+                archive_keys.remove(obj)
+        # DELETE
+        cloud.delete_file(oldest_archive_key)        
 
 def get_lease(lease_name:str)->dict:
     lease = config.get_cfg()["lease"].get(lease_name)
