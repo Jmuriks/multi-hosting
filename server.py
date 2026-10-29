@@ -50,7 +50,7 @@ def start_daemon():
     
     main_path = Path(__file__).resolve().parent
     
-    daemon = subprocess.Popen(["python3","daemon.py"],cwd=main_path,text=True)
+    daemon = subprocess.Popen(["./venv/bin/python","daemon.py"],cwd=main_path,text=True)
     time.sleep(1)
     if daemon.poll() is not None:
         print(f"Daemon died ({daemon.returncode})")
