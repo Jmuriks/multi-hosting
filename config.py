@@ -19,6 +19,9 @@ server_cfg_template = {}
 
 lease_dir_name = "lease/"
 
+MAIN_DIR = Path(__file__).resolve().parent
+config_path = MAIN_DIR / "config.json"
+
 def update_cfg_field(field:str, value):
     '''
     Updates one field of config,
@@ -28,18 +31,18 @@ def update_cfg_field(field:str, value):
     config[field] = value
 
     try:
-        with open("config.json","r+") as file:
+        with open(config_path,"r+") as file:
             cfg_file = json.load(file)
 
         if field not in cfg_file:
             raise Exception("Wrong field")
 
         cfg_file.update(field=value)
-        with open("config.json","w") as file:
+        with open(config_path,"w") as file:
             json.dump(cfg_file,file,indent=4)
     except:
         print("Creating new config")
-        with open("config.json","w") as file:
+        with open(config_path,"w") as file:
             json.dump(config,file,indent=4)
 
 def get_cfg()->dict|None:
@@ -48,7 +51,7 @@ def get_cfg()->dict|None:
     Returns None if config not found.    
     """
     try:
-        with open("config.json","r") as file:
+        with open(config_path,"r") as file:
             cfg = json.load(file)
         return cfg
     except:
@@ -60,7 +63,7 @@ def load_cfg(config:dict):
     Rewrite current Config file by given one.
     '''
 
-    with open("config.json","w") as file:
+    with open(config_path,"w") as file:
         json.dump(config,file,indent=4)
 
 def get_server_cfg(server_path:str):
@@ -197,20 +200,25 @@ def update(suggest_init:bool = True):
         raise Exception("No config found, and doesnt suggest init.")
 
 def init(args = None):
+    try:
+        s3_api = input("Past S3 API link here: ")
 
-    s3_api = input("Past S3 API link here: ")
+        config = config_template
+        config["s3_api"] = s3_api
 
-    config = config_template
-    config["s3_api"] = s3_api
+        load_cfg(config)
+        cloud.init_s3(s3_api)
+        
 
-    load_cfg(config)
-    cloud.init_s3(s3_api)
-    
+        add_cwd(config)
+        add_device_id(config)
+        build_from_cloud(config)
 
-    add_cwd(config)
-    add_device_id(config)
-    build_from_cloud(config)
+        load_cfg(config)
 
-    load_cfg(config)
-
-    print("Initialisation Done!")   
+        print("Initialisation Done!")   
+    except Exception as e:
+        print("Failed to initialise! Abort.")
+        print(e) # ADD -debug of -v for this print
+        if config_path.exists():
+            os.remove(config_path)
