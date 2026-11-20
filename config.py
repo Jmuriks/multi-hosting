@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 config_template = {
-    "s3_api": "",
+    "worker_url": "",
     "device_id": None,
     "daemon": {},
     "directory": "",
@@ -66,18 +66,18 @@ def load_cfg(config:dict):
     with open(config_path,"w") as file:
         json.dump(config,file,indent=4)
 
-def get_server_cfg(server_path:str):
-    cfg = cloud.get_file(server_path+"/"+"mbcfg.json")
-    default = {"server_path": server_path}
-    if not cfg:
-        return default
+# def get_server_cfg(server_path:str):
+#     cfg = cloud.get_file(server_path+"/"+"mbcfg.json")
+#     default = {"server_path": server_path}
+#     if not cfg:
+#         return default
 
-    mb_cfg = json.load(cfg)
-    default.update(mb_cfg)
+#     mb_cfg = json.load(cfg)
+#     default.update(mb_cfg)
 
-    return default
+#     return default
 
-def create_server_cfg(server_path:str) -> dict:
+def create_server_cfg(server_path:str) -> dict: # REMAKE AND RECONSIDER ABOUT mbcfg.json
     '''
     Returns dict with server config
     '''
@@ -86,13 +86,13 @@ def create_server_cfg(server_path:str) -> dict:
     cfg = {"server_path": server_path}
     mbcfg = cloud.get_file(server_path+'/'+"mbcfg.json")
     if mbcfg:
-        mbcfg = json.load(mbcfg)
+        mbcfg = json.loads(mbcfg)
         cfg.update(mbcfg)
 
     current_archive = cloud.get_file(server_path+'/'+"current.json")
     if not current_archive:
         raise Exception("File current.json wasnt found in server directory")
-    current_archive = json.load(current_archive)
+    current_archive = json.loads(current_archive)
     cfg.update(current_archive)
 
     return cfg
@@ -201,13 +201,22 @@ def update(suggest_init:bool = True):
 
 def init(args = None):
     try:
-        s3_api = input("Past S3 API link here: ")
+        
+        while True:
+            worker_url = input("Past link to the cloud here: ")
+
+            if worker_url.lower() == "exit":
+                return
+            elif cloud.check_worker_url(worker_url):
+                break
+            else:
+                print("wrong url, try again or type \"exit\"")
 
         config = config_template
-        config["s3_api"] = s3_api
+        config["worker_url"] = worker_url
 
         load_cfg(config)
-        cloud.init_s3(s3_api)
+        cloud.init()
         
 
         add_cwd(config)

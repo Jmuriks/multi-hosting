@@ -6,7 +6,7 @@ import time
 import psutil
 import shutil
 import config
-import cloud
+import cloud_old
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -85,7 +85,7 @@ def take_lease(lease_name:str, lease:dict = None):
     else:
         kwargs["if_match"] = lease["ETag"]
     
-    cloud.make_file(**kwargs)
+    cloud_old.make_file(**kwargs)
 
 def extend_lease_cycle(lease_name:str, stop_event):
 
@@ -100,7 +100,7 @@ def extend_lease_cycle(lease_name:str, stop_event):
             print(f"Ownership: {lease["owner"] != config.get_cfg()["device_id"]}\nLease expired {lease_expired(lease)}")
             raise Exception("You are not the owner of lease, or it expired.")
         if not stop_event.is_set():
-            cloud.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
+            cloud_old.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
 
 def sync_server_cycle(server_path:str, stop_event):
     while not stop_event.is_set():
@@ -123,7 +123,7 @@ def download_server(server_name:str):
     time_start = perf_counter()
     print("Downloading Server... ",end="",flush=True)
 
-    cloud.download_file(server_archive, archive_ext_path)
+    cloud_old.download_file(server_archive, archive_ext_path)
 
     print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
@@ -156,12 +156,12 @@ def load_server(server_path):
     key = Path(archive_path).relative_to(cfg["directory"])
     key = key.parent / server_name / key.name
 
-    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": "Uploading"}))
+    cloud_old.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": "Uploading"}))
 
     time_start = perf_counter()
     print("Uploading to the cloud... ",end="",flush=True)
-    cloud.upload_file(str(key), archive_path)
-    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
+    cloud_old.upload_file(str(key), archive_path)
+    cloud_old.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
     print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
     os.remove(str(archive_path))
@@ -184,7 +184,7 @@ def archive_server(server_path:Path)->str:
     return archive_path + ".zip"
     
 def clean_old_server(server_path):
-    archive_keys = cloud.get_file_names(server_path+"/")
+    archive_keys = cloud_old.get_file_names(server_path+"/")
 
     dates:list[datetime] = []
     
@@ -206,7 +206,7 @@ def clean_old_server(server_path):
                 oldest_archive_key = obj
                 archive_keys.remove(obj)
         # DELETE
-        cloud.delete_file(oldest_archive_key)        
+        cloud_old.delete_file(oldest_archive_key)        
 
 def get_lease(lease_name:str)->dict:
     lease = config.get_cfg()["lease"].get(lease_name)
@@ -246,7 +246,7 @@ def am_i_host(server_name:str)->bool:
     return False
 
 def release_lease(lease:dict):
-    cloud.delete_file(lease["Key"],lease["ETag"])
+    cloud_old.delete_file(lease["Key"],lease["ETag"])
 
 def start(args):
 

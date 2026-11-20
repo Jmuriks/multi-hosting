@@ -1,137 +1,66 @@
-import boto3
-from botocore.config import Config
+import requests
+from requests.adapters import HTTPAdapter, Retry
 import settings
-from pathlib import Path
 
-BUCKET = "mb-server"
+# CREATE SESSION
 
-s3 = None
+SESSION = requests.session()
 
-def init_s3(url_endpoint:str):
-    global s3
+retries = Retry(3, backoff_factor=1, status_forcelist=[500,502,503,504], allowed_methods= ["GET","POST","PUT","DELETE"])
 
-    s3_api = url_endpoint.rstrip("/")
-    
-    s3 = boto3.client("s3",
-                    endpoint_url = s3_api,
-                    region_name = "auto",
-                    config = Config(request_checksum_calculation="when_required")
-                    )
+SESSION.mount("https://",HTTPAdapter(max_retries=retries))
+SESSION.mount("http://",HTTPAdapter(max_retries=retries)) 
 
-def get_s3_api():
-    try:
-        return settings.get_cfg().get("s3_api")
-    except Exception as e:
-        # print(f"Couldnt get S3 API\n{e}")
-        return
+WORKER: str
+
+def init():
+    global WORKER
+    # GET WORKER BASE URL
+
+    WORKER = settings.get_cfg().get("worker_url")
+    if not WORKER:
+        raise Exception("FAILED TO INIT \'cloud.py\': NO WORKER URL FOUND IN CONFIG")
+
+def check_worker_url(worker_url):
+    r = SESSION.get(f"{worker_url}/status")
+    if r.status_code < 400 and r.json()["status"] == "ok":
+        return True
+    else:
+        return False
 
 def get_file_names(prefix:str = "")-> None | list[str]:
+    r = SESSION.get(f"{WORKER}/files",params={"prefix":prefix})
+    r.raise_for_status()
 
-    objects = s3.list_objects_v2(Bucket=BUCKET,Prefix=prefix)
-    if "Contents" not in objects:
-        return 
+    names = [file["key"] for file in r.json()["files"]]
 
-    names = []
-
-    for name in objects["Contents"]:
-        names.append(name["Key"])
-
-    return names
-
-def get_file_metadata(prefix:str = "")-> list[dict]|None:
-
-    objects = s3.list_objects_v2(Bucket=BUCKET,Prefix=prefix)
-    if "Contents" not in objects:
-        return
-
-    return objects["Contents"]
-
-def get_custom_metadata(key:str)->dict|None:
-    response = s3.head_object(Bucket= BUCKET, Key= key)
-    return response.get("Metadata")
-
-def get_directories(prefix:str = ""):
-    response = s3.list_objects_v2(Bucket=BUCKET,Delimiter="/",Prefix=prefix)
-    if "CommonPrefixes" not in response:
-        print(f"No directories found in {prefix}")
-        return
-    
-    return [p["Prefix"] for p in response["CommonPrefixes"]]
-
-def get_file(key:str):
-    try:
-        file = s3.get_object(Bucket=BUCKET,Key=key)
-        return file["Body"]
-    except:
+    if len(names) == 0:
         return None
+    else:
+        return names
 
-def make_file(key:str,body,if_match:str = None,if_none_match:str = None, metadata:dict[str,str] = None):
-    kwargs = {
-        "Bucket": BUCKET,
-        "Key": key,
-        "Body": body
-    }
+def get_directories(prefix:str = "") -> list[str]:
 
-    if if_match is not None:
-        kwargs["IfMatch"] = if_match
-    if if_none_match is not None:
-        kwargs["IfNoneMatch"] = if_none_match
-    if metadata is not None:
-        kwargs["Metadata"] = metadata
+    r = SESSION.get(f"{WORKER}/files",params={"prefix": prefix, "delimiter": "/"})
+    r.raise_for_status()
 
-    s3.put_object(**kwargs)
+    return r.json()["delimitedPrefixes"]
 
-def download_directory(prefix:str,local_path: Path):
-    """
-    Download directory from cloud and recreate hierarchy
-    prefix should look like a path ex. "Game/Server"
-    local_path is a path where directory will be installed
-    """
-    insides = get_file_names(prefix)
+def get_file(key:str) -> None | bytes:
 
-    server_local_path = local_path / prefix
-    server_local_path.mkdir(parents=True,exist_ok=True)
-    
-    counter = 0
+    r = SESSION.get(f"{WORKER}/files/{key}")
+    if r.status_code == 404:
+        return None
+    elif r.status_code == 200:
+        return r.content
+    r.raise_for_status()
+    return r.content
 
-    for file in insides:
+def get_custom_metadata(key:str = "") -> dict[str]:
+    '''
+    Returns dictionary of metadata, if wrong key raises exception.
+    '''
+    r = SESSION.get(f"{WORKER}/files/{key}/meta")
+    r.raise_for_status()
 
-        local_file = server_local_path / file.removeprefix(prefix)
-        local_file.parent.mkdir(parents=True,exist_ok=True)
-
-        counter += 1
-        print(f"({counter}):",local_file)
-
-        s3.download_file(BUCKET, file, str(local_file))
-
-def download_file(key:str, path):
-    s3.download_file(Bucket=BUCKET, Key=key, Filename=str(path))
-
-def upload_directory(path:str, prefix:str = ""):
-    director = Path(path)
-    counter = 0
-    for item in director.rglob("*"):
-        if item.is_file():
-            relative_path = item.relative_to(director)
-            s3.upload_file(item,Bucket=BUCKET,Key=prefix+str(relative_path))
-            counter += 1
-            print(f"({counter}): {relative_path}")
-
-def upload_file(key:str, file_path:str):
-    s3.upload_file(Filename=file_path,Bucket=BUCKET,Key=key)
-
-def delete_file(key:str,if_match:str = None):
-    kwargs = {
-        "Bucket":BUCKET,
-        "Key":key
-    }
-    if if_match:
-        kwargs["IfMatch"] = if_match
-    s3.delete_object(**kwargs)
-
-def try_auto_init():
-    s3_api = get_s3_api()
-    if s3_api:
-        init_s3(s3_api)
-
-try_auto_init()
+    return r.json()["customMetadata"]
