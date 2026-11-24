@@ -17,7 +17,7 @@ def get_cfg()->dict|None:
         return cfg
     except:
         # print("No config found")
-        return
+        return {}
 
 def load_cfg(config:dict):
     '''

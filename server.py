@@ -6,7 +6,7 @@ import time
 import psutil
 import shutil
 import config
-import cloud_old
+import cloud
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -64,7 +64,7 @@ def debug_daemon():
 def lease_expired(lease:dict):
     now = datetime.now(timezone.utc)
 
-    last_mod = datetime.fromisoformat(lease["LastModified"])
+    last_mod = datetime.fromisoformat(lease["uploaded"])
 
     time_delta = now - last_mod
 
@@ -83,9 +83,9 @@ def take_lease(lease_name:str, lease:dict = None):
     if not lease:
         kwargs["if_none_match"] = "*"
     else:
-        kwargs["if_match"] = lease["ETag"]
+        kwargs["if_match"] = lease["etag"]
     
-    cloud_old.make_file(**kwargs)
+    cloud.make_file(**kwargs)
 
 def extend_lease_cycle(lease_name:str, stop_event):
 
@@ -100,7 +100,7 @@ def extend_lease_cycle(lease_name:str, stop_event):
             print(f"Ownership: {lease["owner"] != config.get_cfg()["device_id"]}\nLease expired {lease_expired(lease)}")
             raise Exception("You are not the owner of lease, or it expired.")
         if not stop_event.is_set():
-            cloud_old.make_file(lease["Key"],b"",lease["ETag"],metadata={"owner":lease["owner"]})
+            cloud.make_file(lease["key"],b"",lease["etag"],metadata={"owner":lease["owner"]})
 
 def sync_server_cycle(server_path:str, stop_event):
     while not stop_event.is_set():
@@ -109,13 +109,11 @@ def sync_server_cycle(server_path:str, stop_event):
 
 
 def download_server(server_name:str):
-    pass
     cfg = config.get_cfg()
     server = cfg["servers"][server_name]
     server_archive = server["archive"]
     if server_archive == "Uploading":
-        print("Someone is uploading server on cloud, try later.")
-        return
+        raise Exception("Someone is uploading server on cloud.")
 
     archive_ext_path:Path = Path(cfg["directory"]) / server_archive
     archive_ext_path.parent.mkdir(parents=True,exist_ok=True)
@@ -123,7 +121,7 @@ def download_server(server_name:str):
     time_start = perf_counter()
     print("Downloading Server... ",end="",flush=True)
 
-    cloud_old.download_file(server_archive, archive_ext_path)
+    cloud.download_file(server_archive, archive_ext_path)
 
     print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
@@ -156,12 +154,12 @@ def load_server(server_path):
     key = Path(archive_path).relative_to(cfg["directory"])
     key = key.parent / server_name / key.name
 
-    cloud_old.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": "Uploading"}))
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": "Uploading"}))
 
     time_start = perf_counter()
     print("Uploading to the cloud... ",end="",flush=True)
-    cloud_old.upload_file(str(key), archive_path)
-    cloud_old.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
+    cloud.upload_file(str(key), archive_path)
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
     print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
     os.remove(str(archive_path))
@@ -184,7 +182,7 @@ def archive_server(server_path:Path)->str:
     return archive_path + ".zip"
     
 def clean_old_server(server_path):
-    archive_keys = cloud_old.get_file_names(server_path+"/")
+    archive_keys = cloud.get_file_names(server_path+"/")
 
     dates:list[datetime] = []
     
@@ -206,7 +204,7 @@ def clean_old_server(server_path):
                 oldest_archive_key = obj
                 archive_keys.remove(obj)
         # DELETE
-        cloud_old.delete_file(oldest_archive_key)        
+        cloud.delete_file(oldest_archive_key)        
 
 def get_lease(lease_name:str)->dict:
     lease = config.get_cfg()["lease"].get(lease_name)
@@ -246,7 +244,7 @@ def am_i_host(server_name:str)->bool:
     return False
 
 def release_lease(lease:dict):
-    cloud_old.delete_file(lease["Key"],lease["ETag"])
+    cloud.delete_file(lease["key"])
 
 def start(args):
 
@@ -255,6 +253,9 @@ def start(args):
     server = get_server(args.server_name)
     if not server:
         print("Server not found")
+        return
+    elif server.get("archive") == "Uploading":
+        print("Someone is uploading server on cloud, try later.")
         return
 
     lease_name = get_lease_name(server["server_path"])
@@ -285,5 +286,22 @@ def stop(args):
     
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
     release_lease(lease)
+
+def retry_server_upload(args): # Maybe add log file and check there for exception during mpu before retrying.
+    server = get_server(args.server_name)
+    lease = get_lease(get_lease_name(server["server_path"]))
+
+    gamedir = Path(config.get_cfg()["directory"]) / server["server_path"]
+    gamedir = gamedir.parent
+
+    if not lease["owner"] == config.get_cfg()["device_id"]:
+        print("Youre dont own lease")
+        return
+
+    load_server(server["server_path"])
+
+    for file in os.listdir(gamedir):
+        if str.startswith(file,str(gamedir.stem)) and str.endswith(file,".zip"):
+            os.remove(gamedir / file)
 
     

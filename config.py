@@ -144,13 +144,11 @@ def update_lease(config:dict):
         return
 
     for lease in leases:
-
-        if lease["Key"] == lease_dir_name:
+        if lease["key"] == lease_dir_name:
             continue
 
-        lease["LastModified"] = lease["LastModified"].isoformat()
-        lease["owner"] = get_lease_owner(lease["Key"])
-        lease_name = lease.get("Key").removeprefix(lease_dir_name).removesuffix("/")
+        lease["owner"] = get_lease_owner(lease["key"])
+        lease_name = lease.get("key").removeprefix(lease_dir_name).removesuffix("/")
 
         config["lease"].update({lease_name:lease})
 
@@ -158,8 +156,7 @@ def add_device_id(config:dict):
     device_id = str(uuid4())
     config["device_id"] = device_id
 
-def add_daemon(config:dict):
-
+def add_daemon(config:dict): # REWRITE WHEN GONNA ADD MORE DAEMONS
     try:
         respond = settings.communicate("about_me")
     except:
