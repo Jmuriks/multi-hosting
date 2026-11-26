@@ -9,7 +9,7 @@ import concurrent.futures
 
 SESSION = requests.session()
 
-retries = Retry(3, backoff_factor=1, status_forcelist=[500,502,503,504], allowed_methods= ["GET","POST","PUT","DELETE"], connect=3, read=3)
+retries = Retry(5, backoff_factor=1, status_forcelist=[500,502,503,504], allowed_methods= ["GET","POST","PUT","DELETE"], connect=3, read=3)
 
 SESSION.mount("https://",HTTPAdapter(max_retries=retries))
 SESSION.mount("http://",HTTPAdapter(max_retries=retries)) 
@@ -39,6 +39,9 @@ def check_worker_url(worker_url):
         return False
 
 def get_file_names(prefix:str = "")-> None | list[str]:
+    '''
+    Return keys of objects or None if none found.
+    '''
     r = SESSION.get(f"{WORKER}/files",params={"prefix":prefix})
     r.raise_for_status()
 
@@ -68,14 +71,14 @@ def get_file(key:str) -> None | bytes:
 
 def get_custom_metadata(key:str = "") -> dict[str]:
     '''
-    Returns dictionary of metadata, if wrong key raises exception.
+    Returns dictionary of custom metadata, if wrong key raises exception.
     '''
     r = SESSION.get(f"{WORKER}/files/{key}/meta")
     r.raise_for_status()
 
     return r.json()["customMetadata"]
 
-def get_file_metadata(prefix:str = "")-> list[dict]|list[None]:
+def list_files(prefix:str = "")-> list[dict]|list[None]:
     '''
     Returns list of objects with basic metadata, custom metadata not included.
     '''
@@ -149,8 +152,12 @@ def mpu_upload(key:str, file_path:str):
             part = file.read(part_size)
 
         r = SESSION.put(url,params={"action":"mpu-uploadpart", "uploadId": upload_id, "partNumber":str(index+1)}, data=part)
-        r.raise_for_status()
+
+        if r.status_code >=400:
+            print(f"part {index} {r.status_code}",flush=True)
         
+        r.raise_for_status()
+
         return r.json()
 
     # MPU
@@ -168,10 +175,11 @@ def mpu_upload(key:str, file_path:str):
             futures = [ 
                 executor.submit(upload_part, upload_id, file_path, index)
                 for index in range(parts)]
-
+            
             concurrent.futures.wait(futures)
-
+            
             uploaded_parts = [future.result() for future in futures]
+
 
         response = complete_mpu(upload_id, uploaded_parts)
 

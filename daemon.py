@@ -24,6 +24,7 @@ class Daemon():
             "terminate":self.terminate,
             "send_server_path":self.send_server_path,
             "stop_lease": self.stop_lease,
+            "hybernate_lease":self.hybernate_lease,
             "about_me": self.about_me
         }
         self.server = server_game
@@ -32,6 +33,7 @@ class Daemon():
         self.work = False
 
         self.stop_event = threading.Event()
+        self.hybernate_event = threading.Event()
         self.lease_extender = None
         self.server_syncer = None
         
@@ -54,9 +56,11 @@ class Daemon():
         self.setup_server(server_name)
         self.server.start()
         self.stop_event.clear()
+        self.hybernate_event.clear()
         self.lease_extender = threading.Thread(target= server.extend_lease_cycle,
                                                 args = (server.get_lease_name(config.get_cfg()["servers"][self.server.path.name].get("server_path")),
-                                                    self.stop_event),
+                                                    self.stop_event,
+                                                    self.hybernate_event),
                                                 daemon=True)
         self.lease_extender.start()
 
@@ -86,11 +90,19 @@ class Daemon():
         
         return "Lease extension and autosync(WIP) stoped".encode()
 
+    def hybernate_lease(self)->bytes:
+
+        self.hybernate_event.set()
+
+        return "Lease put in hybernation".encode()
+
     def about_me(self)->bytes:
 
         server_path = str(self.server.path) if self.server.is_alive() else ""
 
         return f"{os.getpid()}_{server_path}".encode()
+
+
 
 
     def create_socket(self):

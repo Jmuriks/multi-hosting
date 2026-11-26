@@ -132,14 +132,11 @@ def add_cwd(config):
     if cur_dir != config["directory"]:
         config["directory"] = cur_dir
 
-def get_lease_owner(lease_key:str):
-    return cloud.get_custom_metadata(lease_key).get("owner")
-
 def update_lease(config:dict):
 
     config["lease"] = {}
 
-    leases = cloud.get_file_metadata(lease_dir_name)
+    leases = cloud.list_files(lease_dir_name)
     if not leases:
         return
 
@@ -147,7 +144,7 @@ def update_lease(config:dict):
         if lease["key"] == lease_dir_name:
             continue
 
-        lease["owner"] = get_lease_owner(lease["key"])
+        lease.update(cloud.get_custom_metadata(lease["key"]))
         lease_name = lease.get("key").removeprefix(lease_dir_name).removesuffix("/")
 
         config["lease"].update({lease_name:lease})

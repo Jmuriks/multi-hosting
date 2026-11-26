@@ -10,6 +10,7 @@ import cloud
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
+from types import SimpleNamespace
 
 
 EXPIRED_TIME = 30
@@ -61,23 +62,39 @@ def debug_daemon():
     for line in daemon.stdout:
         print("Daemon:",line,end="")
 
-def lease_expired(lease:dict):
-    now = datetime.now(timezone.utc)
+def lease_expired(lease:dict, force:bool = False):
 
-    last_mod = datetime.fromisoformat(lease["uploaded"])
+    lease_status = lease.get("status")
+    print(f"{lease_status}")
 
-    time_delta = now - last_mod
-
-    if time_delta.total_seconds() > EXPIRED_TIME:
-        return True
-    else:
+    if lease_status == "hybernation":
+        print("Lease hybernated, server probably uploading to the cloud now.")
         return False
+    elif lease_status == "broken":
+        print(f"Lease is broken due to {lease.get("error")}")
+        return False
+    elif lease_status == "normal" or force:
+
+        now = datetime.now(timezone.utc)
+
+        last_mod = datetime.fromisoformat(lease["uploaded"])
+
+        time_delta = now - last_mod
+
+        if time_delta.total_seconds() > EXPIRED_TIME:
+            print(f"{time_delta.total_seconds() > EXPIRED_TIME}, {time_delta.total_seconds()} > {EXPIRED_TIME}")
+            return True
+        else:
+            return False
+
+    else:
+        raise ValueError(f"Unknown lease status {lease_status}")
 
 def take_lease(lease_name:str, lease:dict = None):
     kwargs = {
         "key": "lease/"+lease_name,
         "body": b"",
-        "metadata": {"owner": config.get_cfg()["device_id"]}
+        "metadata": {"owner": config.get_cfg()["device_id"], "status":"normal"}
     }
 
     if not lease:
@@ -87,11 +104,30 @@ def take_lease(lease_name:str, lease:dict = None):
     
     cloud.make_file(**kwargs)
 
-def extend_lease_cycle(lease_name:str, stop_event):
+def release_lease(lease:dict):
+    cloud.delete_file(lease["key"])
+
+def extend_lease_cycle(lease_name:str, stop_event, hybernate_lease):
+
+    hybernation = False
 
     while not stop_event.is_set():
-        if stop_event.wait(20):
+        if not hybernation and stop_event.wait(20):
             break
+
+        if hybernate_lease.is_set():
+            hybernation = True
+
+            lease = get_lease(lease_name)
+            cloud.make_file(lease["key"],b"",lease["etag"],metadata={"owner":lease["owner"], "status": "hybernation"})
+
+            if stop_event.wait(timeout = 300):
+                return
+            else: 
+                cloud.make_file(lease["key"],b"",lease["etag"],metadata={"owner":lease["owner"], "status": "broken", "error":"Hybernated lease reached timeout"})
+                raise TimeoutError("Hybernated lease reached timeout")
+
+
         config.update()
 
         lease = get_lease(lease_name)
@@ -99,8 +135,9 @@ def extend_lease_cycle(lease_name:str, stop_event):
         if lease["owner"] != config.get_cfg()["device_id"] or lease_expired(lease):
             print(f"Ownership: {lease["owner"] != config.get_cfg()["device_id"]}\nLease expired {lease_expired(lease)}")
             raise Exception("You are not the owner of lease, or it expired.")
+        
         if not stop_event.is_set():
-            cloud.make_file(lease["key"],b"",lease["etag"],metadata={"owner":lease["owner"]})
+            cloud.make_file(lease["key"],b"",lease["etag"],metadata={"owner":lease["owner"],"status":"normal"})
 
 def sync_server_cycle(server_path:str, stop_event):
     while not stop_event.is_set():
@@ -232,19 +269,22 @@ def am_i_host(server_name:str)->bool:
     cfg = config.get_cfg()
 
     lease = cfg["lease"].get(get_lease_name(server["server_path"]))
-    if lease["owner"] == cfg["device_id"] and not lease_expired(lease):
 
+    if not lease:
+        print("Server isn't running by anyone.")
+        return False
+
+    if lease["owner"] == cfg["device_id"]:
         answ = communicate("send_server_path")
         if answ != server["server_path"]:
-            print(f"{answ} != {server["server_path"]}")
-            print("You are hosting other server, but you have all rights to be host of this server too. kys")
+            print(f"You are hosting {answ} and not {server_name}")
             return False
         
         return True
-    return False
+    else:
+        return False
 
-def release_lease(lease:dict):
-    cloud.delete_file(lease["key"])
+
 
 def start(args):
 
@@ -261,7 +301,16 @@ def start(args):
     lease_name = get_lease_name(server["server_path"])
     lease = config.get_cfg()["lease"].get(lease_name)
 
-    if not lease or lease_expired(lease):
+    if lease:
+        try:
+            expired = lease_expired(lease)
+        except ValueError:
+            if clean_broken_lease(args):
+                lease = None
+            else:
+                raise
+
+    if not lease or expired:
         download_server(args.server_name)
         start_daemon()
         print(communicate(f"start {args.server_name}"))
@@ -274,18 +323,44 @@ def stop(args):
     config.update()
     cfg = config.get_cfg()
 
-    if not am_i_host(args.server_name):
-        print("You cannot stop server that you're not a host of")
+    host = am_i_host(args.server_name)
+    
+    if not host:
+        print("You are not hosting this server at the moment")
         return
+    
     
     print(communicate("stop"))
 
+    print(communicate("hybernate_lease"))
     load_server(cfg["servers"][args.server_name]["server_path"])
     print(communicate("stop_lease"))
     clean_old_server(cfg["servers"][args.server_name]["server_path"])
     
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
     release_lease(lease)
+
+def clean_broken_lease(args):
+    lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
+    lease_status = lease.get("status")
+
+    lease_requiered_keys = set(["key","etag","size","uploaded","owner","status"])
+
+    missing = lease_requiered_keys - set(lease.keys())
+    
+    if missing:
+        if "uploaded" not in missing and not lease_expired(lease, force=True):
+            print("Cannot change unexpired lease")
+            return
+        release_lease(lease)
+        print(f"Deleted broken lease. Was missing fields {missing}")
+        return True
+
+
+    elif lease_status == "broken":
+        release_lease(lease)
+        print("Deleted broken lease")
+        return True
 
 def retry_server_upload(args): # Maybe add log file and check there for exception during mpu before retrying.
     server = get_server(args.server_name)
@@ -300,8 +375,40 @@ def retry_server_upload(args): # Maybe add log file and check there for exceptio
 
     load_server(server["server_path"])
 
+    lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
+    release_lease(lease)
+
     for file in os.listdir(gamedir):
         if str.startswith(file,str(gamedir.stem)) and str.endswith(file,".zip"):
             os.remove(gamedir / file)
 
+def fix_current_json(args):
+    server = get_server(args.server_name)
+    server_path = server["server_path"]
+    archive_keys = cloud.get_file_names(server_path+"/")
     
+    dates:list[datetime] = []
+    
+    for obj in archive_keys:
+        if obj == server_path+"/"+"current.json":
+            archive_keys.remove(obj)
+            continue
+        dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
+
+    recent_date = max(dates).isoformat()
+
+    for obj in archive_keys:
+        if recent_date in obj:
+            recent_archive_key = obj
+            archive_keys.remove(obj)
+
+    cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(recent_archive_key)}))
+        
+
+def fix_feature(args):
+    if args.mode == "1":
+        retry_server_upload(args)
+    elif args.mode == "2":
+        clean_broken_lease(args)
+    elif args.mode == "3":
+        fix_current_json(args)
