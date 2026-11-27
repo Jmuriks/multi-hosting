@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from types import SimpleNamespace
+import sys
 
 
 EXPIRED_TIME = 30
@@ -20,12 +21,23 @@ daemon = None
 
 date_format = "%Y%m%dT%H%M%S%z"
 
+HOST = "127.0.0.1"
+PORT = 65432
+
+
+
 def communicate(message:str)->str:
-    if not os.path.exists("/tmp/mine_daemon.sock"):
-        return "Daemon socket doesn't exist"
-    client = socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
-    client.connect("/tmp/mine_daemon.sock")
-    
+    if sys.platform.startswith("linux"):
+        if not os.path.exists("/tmp/mine_daemon.sock"):
+            raise Exception("Daemon socket doesn't exist")
+        
+        client = socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+        client.connect("/tmp/mine_daemon.sock")
+    elif sys.platform == "win32":
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect((HOST,PORT))
+    else:
+        raise Exception("Unsuported Platform")
 
     msg = (message + "\n").encode()
 
@@ -52,8 +64,12 @@ def start_daemon():
         return
     
     main_path = Path(__file__).resolve().parent
-    python_path = main_path/".venv/bin/python"
-
+    if sys.platform == "win32":
+        python_path = main_path/".venv/Scripts/python"
+    elif sys.platform.startswith("linux"):
+        python_path = main_path/".venv/bin/python"
+    else:
+        raise Exception(f"Unknown Platform {sys.platform}")
     
     daemon = subprocess.Popen([str(python_path),"daemon.py"],cwd=main_path,text=True)
     time.sleep(1)
@@ -67,7 +83,6 @@ def debug_daemon():
 def lease_expired(lease:dict, force:bool = False):
 
     lease_status = lease.get("status")
-    print(f"{lease_status}")
 
     if lease_status == "hybernation":
         print("Lease hybernated, server probably uploading to the cloud now.")
@@ -84,7 +99,7 @@ def lease_expired(lease:dict, force:bool = False):
         time_delta = now - last_mod
 
         if time_delta.total_seconds() > EXPIRED_TIME:
-            print(f"{time_delta.total_seconds() > EXPIRED_TIME}, {time_delta.total_seconds()} > {EXPIRED_TIME}")
+
             return True
         else:
             return False
@@ -97,6 +112,20 @@ def take_lease(lease_name:str, lease:dict = None):
         "key": "lease/"+lease_name,
         "body": b"",
         "metadata": {"owner": config.get_cfg()["device_id"], "status":"normal"}
+    }
+
+    if not lease:
+        kwargs["if_none_match"] = "*"
+    else:
+        kwargs["if_match"] = lease["etag"]
+    
+    cloud.make_file(**kwargs)
+
+def broken_lease(lease_name:str, lease:dict = None, error:str = ""):
+    kwargs = {
+        "key": "lease/"+lease_name,
+        "body": b"",
+        "metadata": {"owner": config.get_cfg()["device_id"], "status":"broken", "error":error}
     }
 
     if not lease:
@@ -197,7 +226,11 @@ def load_server(server_path):
 
     time_start = perf_counter()
     print("Uploading to the cloud... ",end="",flush=True)
-    cloud.upload_file(str(key), archive_path)
+    result = cloud.upload_file(key.as_posix(), archive_path)
+    if not result:
+        print("Upload failed, try 'fix' [Server_Name] 1 ")
+        os.remove(str(archive_path))
+        return "Upload failed"
     cloud.make_file(server["server_path"]+'/'+"current.json",json.dumps({"archive": str(key)}))
     print(f"Done! ({round(perf_counter()-time_start, 1)} sec)")
 
@@ -325,6 +358,8 @@ def stop(args):
     config.update()
     cfg = config.get_cfg()
 
+    lease_name = get_lease_name(cfg["servers"][args.server_name]["server_path"])
+
     host = am_i_host(args.server_name)
     
     if not host:
@@ -335,12 +370,15 @@ def stop(args):
     print(communicate("stop"))
 
     print(communicate("hybernate_lease"))
-    load_server(cfg["servers"][args.server_name]["server_path"])
+    error = load_server(cfg["servers"][args.server_name]["server_path"])
     print(communicate("stop_lease"))
     clean_old_server(cfg["servers"][args.server_name]["server_path"])
     
-    lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
+    lease = get_lease(lease_name)
+    if error:
+        broken_lease(lease_name,lease,error)
     release_lease(lease)
+
 
 def clean_broken_lease(args):
     lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
@@ -366,14 +404,14 @@ def clean_broken_lease(args):
 
 def retry_server_upload(args): # Maybe add log file and check there for exception during mpu before retrying.
     server = get_server(args.server_name)
-    # lease = get_lease(get_lease_name(server["server_path"]))
+    lease = get_lease(get_lease_name(server["server_path"]))
 
     gamedir = Path(config.get_cfg()["directory"]) / server["server_path"]
     gamedir = gamedir.parent
 
-    # if not lease["owner"] == config.get_cfg()["device_id"]:
-    #     print("Youre dont own lease")
-    #     return
+    if not lease["owner"] == config.get_cfg()["device_id"]:
+        print("Youre dont own lease")
+        return
 
     load_server(server["server_path"])
 

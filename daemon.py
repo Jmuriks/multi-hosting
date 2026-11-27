@@ -8,6 +8,8 @@ import config
 import server
 from queue import Queue, Empty
 from pathlib import Path
+import sys
+import shutil
 
 # TODO Sync server to cloud every n seconds, Make uploading and Downloading server from/to cloud more efficient.
 
@@ -15,7 +17,14 @@ END = object()
 
 class Daemon():
     def __init__(self, server_game):
-        self.sock_path = "/tmp/mine_daemon.sock"
+        self.sock_path = None
+        if sys.platform.startswith("linux"):
+            self.sock_path = "/tmp/mine_daemon.sock"
+        elif sys.platform == "win32":
+            self.host = "127.0.0.1"
+            self.port = 65432
+        else:
+            raise Exception(f"Unsuported platform {sys.platform}")
         self.socket = None
         self.buffer = ""
         self.commands = {
@@ -27,7 +36,7 @@ class Daemon():
             "hybernate_lease":self.hybernate_lease,
             "about_me": self.about_me
         }
-        self.server = server_game
+        self.server: Server = server_game
 
         self.acceptig = False
         self.work = False
@@ -82,7 +91,7 @@ class Daemon():
         return "Terminating Daemon.".encode()
 
     def send_server_path(self)->bytes:
-        return str(self.server.path.relative_to(self.server.path.parent.parent)).encode()
+        return self.server.path.relative_to(self.server.path.parent.parent).as_posix().encode()
 
     def stop_lease(self)->bytes:
 
@@ -106,11 +115,20 @@ class Daemon():
 
 
     def create_socket(self):
-        if os.path.exists(self.sock_path):
-            os.remove(self.sock_path)
+        if sys.platform.startswith("linux"):
+            if os.path.exists(self.sock_path):
+                os.remove(self.sock_path)
 
-        self.socket = socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
-        self.socket.bind(self.sock_path)
+            self.socket = socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+            self.socket.bind(self.sock_path)
+        elif sys.platform == "win32":
+
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind((self.host,self.port))
+            
+
+        
 
     def close_communication(self):
         self.accepting = False
@@ -181,7 +199,8 @@ class Daemon():
         finally:
             self.server.kill()
             self.socket.close()
-            os.remove(self.sock_path)
+            if self.sock_path:
+                os.remove(self.sock_path)
             print("Server killed, Socket deleted.")
          
 
@@ -189,7 +208,7 @@ class Server():
     def __init__(self):
         self.process = None
         self.ram = None
-        self.path = None
+        self.path: Path = None
         self.running = False
         self.stdout_q = Queue()
         self.stdout_reader = None
@@ -249,7 +268,11 @@ class Server():
 
     def start(self):
 
-        self.process = subprocess.Popen(["java",f"-Xmx{self.ram if self.ram is not None else 4}G","-jar","server.jar","nogui"],
+        java_path = shutil.which("java")
+        if not java_path:
+            raise Exception("Java not found in PATH. Please install Java")
+
+        self.process = subprocess.Popen([java_path,f"-Xmx{self.ram if self.ram is not None else 4}G","-jar","server.jar","nogui"],
                         stdout = subprocess.PIPE,
                         stdin = subprocess.PIPE,
                         stderr = subprocess.STDOUT,

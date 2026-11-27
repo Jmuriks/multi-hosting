@@ -185,10 +185,13 @@ def mpu_upload(key:str, file_path:str):
 
         response.raise_for_status()
 
+        return True
+
     except Exception as e:
         print("Error, aborting..\n",e)
         if upload_id:
             mpu_abort(upload_id)
+            return False
         else:
             raise
 
