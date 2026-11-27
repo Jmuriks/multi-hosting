@@ -18,6 +18,8 @@ EXTEND_TIME = EXPIRED_TIME - 10  # messy
 
 daemon = None
 
+date_format = "%Y%m%dT%H%M%S%z"
+
 def communicate(message:str)->str:
     if not os.path.exists("/tmp/mine_daemon.sock"):
         return "Daemon socket doesn't exist"
@@ -209,7 +211,7 @@ def archive_server(server_path:Path)->str:
     time_start = perf_counter()
     print("Archiving Server... ",end="",flush=True)
 
-    archive_path = str(server_path) + "_" + datetime.now(timezone.utc).isoformat()
+    archive_path = str(server_path) + "_" + datetime.now(timezone.utc).strftime(date_format)
     shutil.make_archive(archive_path,
                         "zip",
                         server_path)
@@ -227,11 +229,11 @@ def clean_old_server(server_path):
         if obj == server_path+"/"+"current.json":
             archive_keys.remove(obj)
             continue
-        dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
+        dates.append(datetime.strptime(obj.removesuffix(".zip").split("_")[-1], date_format))
 
     while len(dates) > 3:
         # FIND OLDEST DATE
-        oldest_date = min(dates).isoformat()
+        oldest_date = min(dates).strftime(date_format)
         dates.remove(min(dates))
         oldest_archive_key = None
 
@@ -364,19 +366,19 @@ def clean_broken_lease(args):
 
 def retry_server_upload(args): # Maybe add log file and check there for exception during mpu before retrying.
     server = get_server(args.server_name)
-    lease = get_lease(get_lease_name(server["server_path"]))
+    # lease = get_lease(get_lease_name(server["server_path"]))
 
     gamedir = Path(config.get_cfg()["directory"]) / server["server_path"]
     gamedir = gamedir.parent
 
-    if not lease["owner"] == config.get_cfg()["device_id"]:
-        print("Youre dont own lease")
-        return
+    # if not lease["owner"] == config.get_cfg()["device_id"]:
+    #     print("Youre dont own lease")
+    #     return
 
     load_server(server["server_path"])
 
-    lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
-    release_lease(lease)
+    # lease = get_lease(get_lease_name(config.get_cfg()["servers"][args.server_name]["server_path"]))
+    # release_lease(lease)
 
     for file in os.listdir(gamedir):
         if str.startswith(file,str(gamedir.stem)) and str.endswith(file,".zip"):
@@ -393,9 +395,9 @@ def fix_current_json(args):
         if obj == server_path+"/"+"current.json":
             archive_keys.remove(obj)
             continue
-        dates.append(datetime.fromisoformat(obj.removesuffix(".zip").split("_")[-1]))
+        dates.append(datetime.strptime(obj.removesuffix(".zip").split("_")[-1], date_format))
 
-    recent_date = max(dates).isoformat()
+    recent_date = max(dates).strftime(date_format)
 
     for obj in archive_keys:
         if recent_date in obj:

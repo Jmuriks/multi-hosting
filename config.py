@@ -19,6 +19,8 @@ server_cfg_template = {}
 
 lease_dir_name = "lease/"
 
+date_format = "%Y%m%dT%H%M%S%z"
+
 MAIN_DIR = Path(__file__).resolve().parent
 config_path = MAIN_DIR / "config.json"
 
@@ -77,6 +79,7 @@ def load_cfg(config:dict):
 
 #     return default
 
+
 def create_server_cfg(server_path:str) -> dict: # REMAKE AND RECONSIDER ABOUT mbcfg.json
     '''
     Returns dict with server config
@@ -84,10 +87,10 @@ def create_server_cfg(server_path:str) -> dict: # REMAKE AND RECONSIDER ABOUT mb
     server_path = server_path.removesuffix("/")
 
     cfg = {"server_path": server_path}
-    mbcfg = cloud.get_file(server_path+'/'+"mbcfg.json")
-    if mbcfg:
-        mbcfg = json.loads(mbcfg)
-        cfg.update(mbcfg)
+    # mbcfg = cloud.get_file(server_path+'/'+"mbcfg.json")
+    # if mbcfg:
+    #     mbcfg = json.loads(mbcfg)
+    #     cfg.update(mbcfg)
 
     current_archive = cloud.get_file(server_path+'/'+"current.json")
     if not current_archive:

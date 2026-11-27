@@ -3,6 +3,8 @@ import os
 import socket
 from pathlib import Path
 
+date_format = "%Y%m%dT%H%M%S"
+
 MAIN_DIR = Path(__file__).resolve().parent
 config_path = MAIN_DIR / "config.json"
 
