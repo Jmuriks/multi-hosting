@@ -226,8 +226,8 @@ def load_server(server_path):
 
     time_start = perf_counter()
     print("Uploading to the cloud... ",end="",flush=True)
-    result = cloud.upload_file(key.as_posix(), archive_path)
-    if not result:
+    error = cloud.upload_file(key.as_posix(), archive_path)
+    if error:
         print("Upload failed, try 'fix' [Server_Name] 1 ")
         os.remove(str(archive_path))
         return "Upload failed"
